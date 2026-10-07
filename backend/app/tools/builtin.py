@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.knowledge_repository import search_chunks
+from app.knowledge.query_expansion import expand_query
 from app.models.tool import ToolResult, ToolSpec
 
 class CurrentTimeTool:
@@ -32,8 +33,20 @@ class KnowledgeRetrieveTool:
             return ToolResult(self.spec.name, {"items": [], "query": query}, False, "query and project_id are required")
         limit = min(max(int(arguments.get("limit", 8)), 1), 20)
         artifact_id = str(arguments.get("artifact_id", "")).strip() or None
-        items = await search_chunks(self.session, project_id, query, limit, artifact_id=artifact_id)
+        queries = expand_query(query, max_queries=4)
+        merged = {}
+        for expanded_query in queries:
+            items = await search_chunks(
+                self.session, project_id, expanded_query,
+                min(limit, 8), artifact_id=artifact_id,
+            )
+            for item in items:
+                current = merged.get(item.id)
+                if current is None or item.score > current.score:
+                    merged[item.id] = item
+        items = sorted(merged.values(), key=lambda item: item.score, reverse=True)[:limit]
         return ToolResult(self.spec.name, {
             "query": query,
+            "expanded_queries": queries,
             "items": [{"id": item.id, "text": item.text, "score": item.score, "source": item.source.id, "metadata": item.metadata} for item in items],
         })

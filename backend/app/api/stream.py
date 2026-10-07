@@ -10,6 +10,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.core.container import build_orchestrator
 from app.db.project_repository import get_project
+from app.db.memory_repository import search_memories
 from app.db.session import get_session
 from app.events import AgentEventType
 from app.models.task import Task\nfrom app.models.types import ChatMessage
@@ -36,7 +37,14 @@ async def event_stream(
             yield sse({"type": "error", "message": "Project not found"})
             return
 
-    messages = [*request.messages, ChatMessage(role="user", content=request.goal)]
+    memories = await search_memories(session, user.id, request.goal, project_id=request.project_id, limit=6)
+    messages = [*request.messages]
+    if memories:
+        messages.append(ChatMessage(
+            role="system",
+            content="Relevant NOVA memories (use only when helpful):\\n" + "\\n".join(f"- {m.content}" for m in memories),
+        ))
+    messages.append(ChatMessage(role="user", content=request.goal))
     orchestrator = build_orchestrator(session)
     try:
         yield sse({"type": AgentEventType.TASK_STARTED.value, "message": request.goal})

@@ -26,7 +26,7 @@ class OpenAICompatibleProvider(ModelProvider):
             if m.tool_call_id:
                 item["tool_call_id"] = m.tool_call_id
             if m.tool_calls:
-                item["tool_calls"] = [{"id": c.name, "type": "function",
+                item["tool_calls"] = [{"id": c.id or c.name, "type": "function",
                     "function": {"name": c.name, "arguments": json.dumps(c.arguments)}} for c in m.tool_calls]
             messages.append(item)
         payload = {"model": model, "messages": messages, "temperature": request.temperature}
@@ -50,7 +50,7 @@ class OpenAICompatibleProvider(ModelProvider):
             fn = call.get("function", {})
             try: args = json.loads(fn.get("arguments", "{}"))
             except json.JSONDecodeError: args = {}
-            calls.append(ToolCall(name=fn.get("name", ""), arguments=args))
+            calls.append(ToolCall(name=fn.get("name", ""), arguments=args, id=call.get("id")))
         usage = data.get("usage") or {}
         return ModelResponse(content=message.get("content") or "", model=data.get("model", model),
             provider=self.provider_name, usage={k: int(v) for k,v in usage.items() if isinstance(v,(int,float))},

@@ -9,7 +9,7 @@ from app.db.project_repository import get_project
 from app.db.memory_repository import search_memories
 from app.memory.engine import MemoryEngine
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.types import ChatMessage
+from app.models.types import ChatMessage, ContentPart
 
 router = APIRouter(tags=["chat"])
 orchestrator = build_orchestrator()

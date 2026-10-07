@@ -20,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var password: EditText
     private lateinit var message: EditText
     private lateinit var status: TextView
+    private lateinit var progress: TextView
     private lateinit var messages: LinearLayout
     private lateinit var sendButton: Button
     private lateinit var authButton: Button
@@ -59,6 +60,14 @@ class MainActivity : AppCompatActivity() {
         header.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(status)
 
+        progress = TextView(this).apply {
+            text = ""
+            textSize = 12f
+            setTextColor(Color.LTGRAY)
+            setPadding(4, 4, 4, 8)
+            visibility = View.GONE
+        }
+
         endpoint = field("API base URL", prefs.getString("api", "http://10.0.2.2:8000"))
         email = field("Email", prefs.getString("email", ""))
         password = field("Password", "")
@@ -94,6 +103,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         root.addView(header)
+        root.addView(progress)
         root.addView(endpoint)
         root.addView(email)
         root.addView(password)
@@ -342,7 +352,9 @@ class MainActivity : AppCompatActivity() {
         message.text.clear()
         sendButton.isEnabled = false
         newChatButton.isEnabled = false
-        status.text = "Thinking..."
+        status.text = "Planning..."
+        progress.visibility = View.VISIBLE
+        progress.text = "Planning → Tools → Reasoning → Verification"
 
         val assistant = bubble("NOVA is thinking...", false)
         assistant.setTextColor(Color.LTGRAY)
@@ -426,8 +438,42 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val event = JSONObject(raw)
                         when (event.optString("type")) {
+                            "task.started" -> {
+                                runOnUiThread {
+                                    progress.visibility = View.VISIBLE
+                                    progress.text = "● Task started"
+                                    status.text = "Planning..."
+                                }
+                            }
+                            "plan.created" -> {
+                                val data = event.optJSONObject("data")
+                                val steps = data?.optJSONArray("steps")
+                                val count = steps?.length() ?: 0
+                                runOnUiThread {
+                                    progress.text = "✓ Plan created" + if (count > 0) " • $count steps" else ""
+                                    status.text = "Executing plan..."
+                                }
+                            }
+                            "tool.call.delta" -> {
+                                val data = event.optJSONObject("data")
+                                val name = data?.optString("name").orEmpty()
+                                if (name.isNotBlank()) runOnUiThread {
+                                    progress.text = "⚙ $name"
+                                    status.text = "Using tool..."
+                                }
+                            }
+                            "tool.call.result" -> {
+                                val data = event.optJSONObject("data")
+                                val name = data?.optString("tool").orEmpty()
+                                val success = data?.optBoolean("success", false) ?: false
+                                runOnUiThread {
+                                    progress.text = (if (success) "✓ " else "✕ ") + name
+                                    status.text = if (success) "Tool complete" else "Tool failed"
+                                }
+                            }
                             "response.delta" -> {
-                                val delta = event.optString("delta")
+                                val data = event.optJSONObject("data")
+                                val delta = data?.optString("delta") ?: event.optString("delta")
                                 if (delta.isNotEmpty()) {
                                     answer.append(delta)
                                     val visible = answer.toString()
@@ -439,20 +485,41 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             "model.selected" -> {
-                                val model = event.optString("model")
+                                val data = event.optJSONObject("data")
+                                val model = data?.optString("model") ?: event.optString("model")
                                 if (model.isNotBlank()) runOnUiThread {
                                     status.text = "Using $model"
                                 }
                             }
                             "verification" -> {
-                                val verified = event.optBoolean("verified", false)
+                                val data = event.optJSONObject("data")
+                                val verified = data?.optBoolean("passed", false) ?: event.optBoolean("verified", false)
                                 runOnUiThread {
-                                    status.text = if (verified) "Verified" else "Verifying..."
+                                    status.text = if (verified) "Verified" else "Verification needs attention"
+                                    progress.text = if (verified) "✓ Verification passed" else "⚠ Verification incomplete"
                                 }
                             }
                             "response.final" -> {
+                                runOnUiThread {
+                                    status.text = "Finalizing..."
+                                    progress.text = "✓ Response finalized"
+                                }
                                 val content = event.optString("content")
                                 if (content.isNotBlank()) finalContent = content
+                            }
+                            "task.finished" -> {
+                                runOnUiThread {
+                                    progress.text = "✓ Task complete"
+                                    status.text = "● Ready"
+                                }
+                            }
+                            "provider.failed" -> {
+                                val data = event.optJSONObject("data")
+                                val model = data?.optString("model").orEmpty()
+                                runOnUiThread {
+                                    progress.text = "↻ Provider failed" + if (model.isNotBlank()) ": $model" else ""
+                                    status.text = "Trying another model..."
+                                }
                             }
                             "error" -> {
                                 failed = true
@@ -495,6 +562,7 @@ class MainActivity : AppCompatActivity() {
                 assistant.text = "Connection error: " + (e.message ?: "unknown error")
                 assistant.setTextColor(Color.rgb(255, 120, 120))
                 status.text = "Offline"
+                progress.visibility = View.GONE
             }
         } finally {
             connection?.disconnect()

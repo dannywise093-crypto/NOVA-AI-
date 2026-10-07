@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from enum import StrEnum
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, update
 from app.db.models import Base
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -81,22 +81,32 @@ async def recoverable_tasks(session: AsyncSession, limit: int = 20) -> list[Agen
 
 
 async def claim_task(session: AsyncSession, task_id: str, lease_seconds: int = 60) -> AgentTaskRow | None:
-    task = await session.scalar(select(AgentTaskRow).where(AgentTaskRow.id == task_id))
-    if task is None:
-        return None
     now = datetime.now(timezone.utc)
-    if task.status not in {TaskStatus.QUEUED, TaskStatus.RUNNING}:
+    lease_until = now + timedelta(seconds=lease_seconds)
+    result = await session.execute(
+        update(AgentTaskRow)
+        .where(
+            AgentTaskRow.id == task_id,
+            or_(
+                AgentTaskRow.status == TaskStatus.QUEUED,
+                (AgentTaskRow.status == TaskStatus.RUNNING)
+                & (AgentTaskRow.lease_until != None)
+                & (AgentTaskRow.lease_until < now),
+            ),
+        )
+        .values(
+            status=TaskStatus.RUNNING,
+            attempts=AgentTaskRow.attempts + 1,
+            lease_until=lease_until,
+            heartbeat_at=now,
+            updated_at=now,
+        )
+    )
+    if result.rowcount != 1:
+        await session.rollback()
         return None
-    if task.status == TaskStatus.RUNNING and task.lease_until and task.lease_until >= now:
-        return None
-    task.status = TaskStatus.RUNNING
-    task.attempts += 1
-    task.lease_until = now + timedelta(seconds=lease_seconds)
-    task.heartbeat_at = now
-    task.updated_at = now
     await session.commit()
-    await session.refresh(task)
-    return task
+    return await session.scalar(select(AgentTaskRow).where(AgentTaskRow.id == task_id))
 
 
 async def heartbeat_task(session: AsyncSession, task_id: str, lease_seconds: int = 60) -> bool:

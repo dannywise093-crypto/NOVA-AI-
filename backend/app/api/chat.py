@@ -28,6 +28,7 @@ class ChatResponse(BaseModel):
     routing_reason: str
     capabilities: list[str]
     plan: list[PlanStepResponse]
+    verification: dict[str, object]
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -44,6 +45,11 @@ async def chat(request: ChatRequest) -> ChatResponse:
         provider=result.response.provider,
         routing_reason=result.model_reason,
         capabilities=[cap.value for cap in orchestrator.infer_capabilities(request.message)],
+        verification={
+            "passed": result.verification.passed if result.verification else False,
+            "score": result.verification.score if result.verification else 0.0,
+            "notes": result.verification.notes if result.verification else "No verification result",
+        },
         plan=[
             PlanStepResponse(
                 id=step.step.id,

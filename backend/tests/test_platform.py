@@ -75,3 +75,14 @@ def test_conversation_store_persists_messages():
     loaded = store.get("conv-1")
     assert loaded is not None
     assert loaded.messages[0].content == "Build NOVA"
+
+
+from app.artifacts.base import ProjectArtifact
+from app.artifacts.store import ArtifactStore
+
+
+def test_artifact_store_filters_by_project():
+    store = ArtifactStore()
+    store.create(ProjectArtifact("a1", "p1", "notes.txt", "text/plain", 5, "dev://a1"))
+    store.create(ProjectArtifact("a2", "p2", "other.txt", "text/plain", 5, "dev://a2"))
+    assert [item.id for item in store.list("p1")] == ["a1"]

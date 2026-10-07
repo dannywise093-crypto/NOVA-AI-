@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.research.http_provider import HttpSearchProvider
+from app.research.engine import ResearchEngine
 from app.research.search import UnconfiguredSearchProvider
 
 router = APIRouter(tags=["research"])
@@ -21,9 +22,20 @@ class ResearchRequest(BaseModel):
 
 @router.post("/research/search")
 async def research_search(request: ResearchRequest) -> dict[str, object]:
-    sources = await provider.search(request.query, limit=request.limit)
+    engine = ResearchEngine(provider)
+    bundle = await engine.gather(request.query, rounds=2, limit_per_round=request.limit)
     return {
         "query": request.query,
-        "sources": [source.__dict__ for source in sources],
+        "sources": [source.__dict__ for source in bundle.sources],
+        "evidence": [
+            {
+                "uri": item.uri,
+                "title": item.title,
+                "text": item.text[:12000],
+                "status_code": item.status_code,
+                "content_type": item.content_type,
+            }
+            for item in bundle.evidence
+        ],
         "configured": not isinstance(provider, UnconfiguredSearchProvider),
     }

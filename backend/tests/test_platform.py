@@ -86,3 +86,19 @@ def test_artifact_store_filters_by_project():
     store.create(ProjectArtifact("a1", "p1", "notes.txt", "text/plain", 5, "dev://a1"))
     store.create(ProjectArtifact("a2", "p2", "other.txt", "text/plain", 5, "dev://a2"))
     assert [item.id for item in store.list("p1")] == ["a1"]
+
+
+from app.memory.engine import MemoryEngine
+
+
+def test_memory_engine_extracts_explicit_preferences_and_blocks_secrets():
+    engine = MemoryEngine()
+    candidates = engine.extract("I prefer Python for backend work.")
+    assert candidates
+    assert candidates[0].kind == "preference"
+    assert engine.extract("My password is super-secret") == []
+
+
+def test_memory_engine_deduplicates_similar_text():
+    engine = MemoryEngine()
+    assert engine._similar("preference: Python backend", "preference: Python backend work")

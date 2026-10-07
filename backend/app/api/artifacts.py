@@ -9,7 +9,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.knowledge.ingest import DocumentIngestor
 from app.knowledge.vector import InMemoryVectorStore
-from app.projects.store import InMemoryProjectStore
+from app.projects.runtime import project_store
 
 router = APIRouter(tags=["artifacts"])
 store = ArtifactStore()

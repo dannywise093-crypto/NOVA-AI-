@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.models.tool import ToolCall
 
 @dataclass(frozen=True)
 class ContentPart:
@@ -9,13 +10,13 @@ class ContentPart:
     uri: str | None = None
     mime_type: str | None = None
 
-
 @dataclass(frozen=True)
 class ChatMessage:
     role: str
     content: str
     parts: tuple[ContentPart, ...] = ()
-
+    tool_call_id: str | None = None
+    tool_calls: tuple[ToolCall, ...] = ()
 
 @dataclass(frozen=True)
 class ModelRequest:
@@ -23,7 +24,7 @@ class ModelRequest:
     temperature: float = 0.2
     max_tokens: int | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-
+    tools: tuple[dict[str, Any], ...] = ()
 
 @dataclass(frozen=True)
 class ModelResponse:
@@ -32,3 +33,4 @@ class ModelResponse:
     provider: str
     usage: dict[str, int] = field(default_factory=dict)
     finish_reason: str | None = None
+    tool_calls: tuple[ToolCall, ...] = ()

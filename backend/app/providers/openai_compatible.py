@@ -22,7 +22,20 @@ class OpenAICompatibleProvider(ModelProvider):
     def _payload(self, model: str, request: ModelRequest, stream: bool = False) -> dict:
         messages = []
         for m in request.messages:
-            item = {"role": m.role, "content": m.content}
+            if m.parts:
+                parts = []
+                if m.content:
+                    parts.append({"type": "text", "text": m.content})
+                for part in m.parts:
+                    if part.type == "text" and part.text:
+                        parts.append({"type": "text", "text": part.text})
+                    elif part.type == "image_url" and part.uri:
+                        parts.append({"type": "image_url", "image_url": {"url": part.uri}})
+                    elif part.type == "file" and part.uri:
+                        parts.append({"type": "file", "file": {"url": part.uri, **({"mime_type": part.mime_type} if part.mime_type else {})}})
+                item = {"role": m.role, "content": parts}
+            else:
+                item = {"role": m.role, "content": m.content}
             if m.tool_call_id:
                 item["tool_call_id"] = m.tool_call_id
             if m.tool_calls:

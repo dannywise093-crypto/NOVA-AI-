@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     auth_secret: str = ""
     search_base_url: str = ""
     search_api_key: str = ""
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

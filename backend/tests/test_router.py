@@ -20,3 +20,21 @@ async def test_orchestrator_runs():
     )
     assert result.response.provider == "mock"
     assert "Hello NOVA" in result.response.content
+
+
+class FailingProvider(MockProvider):
+    async def chat(self, model, request):
+        raise RuntimeError("simulated outage")
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_falls_back_after_provider_failure():
+    agent = AgentOrchestrator(
+        ModelRouter([FailingProvider(), MockProvider()])
+    )
+    result = await agent.run(
+        "Say hello",
+        [ChatMessage(role="user", content="fallback works")],
+    )
+    assert result.response.provider == "mock"
+    assert "recovered" in result.model_reason

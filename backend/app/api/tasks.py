@@ -3,7 +3,10 @@ from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
-from app.conversations.runtime import conversation_store
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.conversations.base import Message
+from app.db.conversation_repository import get_conversation, save_conversation
+from app.db.session import get_session
 from app.core.container import build_orchestrator
 from app.models.types import ChatMessage
 
@@ -26,23 +29,22 @@ class TaskResponse(BaseModel):
     events: list[dict[str, object]]
 
 @router.post("/tasks/run", response_model=TaskResponse)
-async def run_task(request: TaskRequest, user: User = Depends(get_current_user)) -> TaskResponse:
+async def run_task(request: TaskRequest, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> TaskResponse:
     messages = list(request.messages)
     if request.conversation_id:
-        conversation = conversation_store.get(request.conversation_id)
-        if conversation is None or conversation.owner_id != user.id:
+        conversation = await get_conversation(session, request.conversation_id, user.id)
+        if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
         messages = [ChatMessage(role=item.role, content=item.content) for item in conversation.messages]
     messages.append(ChatMessage(role="user", content=request.goal))
     result = await orchestrator.run(request.goal, messages, request.model)
     events = [event for step in (result.trace.steps if result.trace else []) for event in step.events]
     if request.conversation_id:
-        conversation = conversation_store.get(request.conversation_id)
+        conversation = await get_conversation(session, request.conversation_id, user.id)
         if conversation is not None:
-            from app.conversations.base import Message
             conversation.add_message(Message(id=f"task-user-{len(conversation.messages)}", role="user", content=request.goal))
             conversation.add_message(Message(id=f"task-assistant-{len(conversation.messages)}", role="assistant", content=result.response.content))
-            conversation_store.save(conversation)
+            await save_conversation(session, conversation)
     return TaskResponse(
         content=result.response.content, model=result.response.model, provider=result.response.provider,
         routing_reason=result.model_reason,

@@ -6,6 +6,7 @@ from app.router import ModelRouter
 from app.tools.registry import ToolRegistry
 from app.tools.builtin import CurrentTimeTool, KnowledgeRetrieveTool, WebSearchTool
 from app.tools.code_sandbox import CodeSandboxTool
+from app.knowledge.model_query_expansion import expand_with_model
 
 
 def build_providers() -> list:
@@ -26,5 +27,5 @@ def build_providers() -> list:
 
 
 def build_orchestrator(session=None) -> AgentOrchestrator:
-    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool(session), CodeSandboxTool()])
+    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool(session, query_expander=lambda query: expand_with_model(query, build_providers()[0] if build_providers() else None, settings.model_name)), CodeSandboxTool()])
     return AgentOrchestrator(ModelRouter(build_providers()), tools)

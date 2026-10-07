@@ -26,9 +26,13 @@ async def replace_chunks(session: AsyncSession, project_id: str, artifact_id: st
         session.add(KnowledgeChunkRow(id=chunk_id, project_id=project_id, artifact_id=artifact_id, chunk_index=index, text=text, embedding=json.dumps(embedding) if embedding else None, created_at=datetime.now()))
     await session.commit()
 
-async def search_chunks(session: AsyncSession, project_id: str, query: str, limit: int = 8) -> list[KnowledgeItem]:
-    rows = (await session.scalars(select(KnowledgeChunkRow).where(KnowledgeChunkRow.project_id == project_id))).all()
-    terms = set(query.lower().split())
+async def search_chunks(session: AsyncSession, project_id: str, query: str, limit: int = 8, artifact_id: str | None = None) -> list[KnowledgeItem]:
+    statement = select(KnowledgeChunkRow).where(KnowledgeChunkRow.project_id == project_id)
+    if artifact_id:
+        statement = statement.where(KnowledgeChunkRow.artifact_id == artifact_id)
+    rows = (await session.scalars(statement)).all()
+    import re
+    terms = set(re.findall(r"[a-z0-9_]+", query.lower()))
     query_embedding = None
     try:
         from app.knowledge.embeddings import HashEmbeddingProvider
@@ -36,16 +40,28 @@ async def search_chunks(session: AsyncSession, project_id: str, query: str, limi
     except Exception:
         pass
     def score(row):
-        lexical = len(terms & set(row.text.lower().split()))
+        words = set(re.findall(r"[a-z0-9_]+", row.text.lower()))
+        lexical = len(terms & words) / max(1, len(terms))
+        phrase_bonus = 0.25 if query.lower() in row.text.lower() else 0.0
         if not query_embedding or not row.embedding:
             return lexical
         vector = json.loads(row.embedding)
         cosine = sum(a * b for a, b in zip(query_embedding, vector)) / max(1, math.sqrt(sum(a*a for a in query_embedding)) * math.sqrt(sum(b*b for b in vector)))
-        return lexical + cosine * 5
+        return lexical * 5 + cosine * 5 + phrase_bonus
     ranked = sorted(rows, key=score, reverse=True)
+    selected = []
+    seen_artifacts: set[str] = set()
+    for row in ranked:
+        if len(selected) >= limit:
+            break
+        # Avoid returning only one artifact when several documents contain useful evidence.
+        if row.artifact_id in seen_artifacts and len(selected) < max(2, limit // 2):
+            continue
+        selected.append(row)
+        seen_artifacts.add(row.artifact_id)
     result = []
-    for row in ranked[:limit]:
-        overlap = len(terms & set(row.text.lower().split()))
+    for row in selected:
+        overlap = len(terms & set(re.findall(r"[a-z0-9_]+", row.text.lower())))
         result.append(KnowledgeItem(
             id=row.id,
             text=row.text,

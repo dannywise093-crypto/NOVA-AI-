@@ -89,4 +89,47 @@ export default function HomePage() {
       </section>
     </main>
   );
-}
+}  async function runTask(event: FormEvent) {
+    event.preventDefault();
+    if (!goal.trim()) return;
+    setBusy(true); setResult(null); setEvents([]);
+    try {
+      const response = await fetch(API + "/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+        body: JSON.stringify({ goal })
+      });
+      if (!response.ok || !response.body) throw new Error("NOVA stream unavailable");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const line = chunk.split("\n").find(item => item.startsWith("data: "));
+          if (!line) continue;
+          const data = JSON.parse(line.slice(6));
+          if (data.type === "response.final") {
+            setResult({
+              content: data.content,
+              model: data.model,
+              provider: data.provider,
+              capabilities: [],
+              verification: { passed: true, score: 1 },
+              events: []
+            });
+          } else {
+            setEvents(current => [...current, data]);
+          }
+        }
+      }
+    } catch (error) {
+      setEvents([{ type: "error", message: error instanceof Error ? error.message : "Unknown error" }]);
+    } finally {
+      setBusy(false);
+    }
+  }

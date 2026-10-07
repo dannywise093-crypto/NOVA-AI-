@@ -6,6 +6,7 @@ from app.models.types import ChatMessage, ModelRequest, ModelResponse
 from app.router import ModelRouter
 from app.tools.registry import ToolRegistry
 from app.verification import ResultVerifier, VerificationResult
+from app.agents.adaptive_runtime import AdaptiveAgentRuntime
 
 @dataclass(frozen=True)
 class AgentResult:
@@ -20,6 +21,7 @@ class AgentOrchestrator:
         self.planner = TaskPlanner()
         self.executor = AgentExecutor(tools or ToolRegistry())
         self.verifier = ResultVerifier()
+        self.runtime = AdaptiveAgentRuntime(self.executor, self.planner)
 
     def infer_capabilities(self, task: str) -> tuple[Capability, ...]:
         text = task.lower()

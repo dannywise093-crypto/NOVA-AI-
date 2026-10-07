@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
     model: str | None = None
     project_id: str | None = None
+    attachments: list[dict[str, object]] = Field(default_factory=list)
 
 
 class PlanStepResponse(BaseModel):

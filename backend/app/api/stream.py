@@ -82,10 +82,6 @@ async def event_stream(
             ))
 
         from app.models.types import ModelRequest
-        request_model = ModelRequest(
-            messages=tuple(context_messages),
-            metadata={"capabilities": [c.value for c in capabilities], "project_id": request.project_id},
-        )
         accumulated = ""
         selected = None
         failures = []
@@ -96,9 +92,73 @@ async def event_stream(
                     "model": choice.model, "provider": choice.provider.list_models()[0].provider,
                     "reason": choice.reason, "score": choice.score,
                 }})
-                async for delta in choice.provider.stream(choice.model, request_model):
-                    accumulated += delta
-                    yield sse({"type": AgentEventType.RESPONSE_DELTA.value, "data": {"delta": delta}})
+                context = list(context_messages)
+                for _ in range(8):
+                    request_model = ModelRequest(
+                        messages=tuple(context),
+                        metadata={"capabilities": [c.value for c in capabilities], "project_id": request.project_id},
+                        tools=tuple(orchestrator.executor.tools.schemas()),
+                    )
+                    call_buffers = {}
+                    finish_reason = None
+                    async for event in choice.provider.stream_events(choice.model, request_model):
+                        event_type = event.get("type")
+                        if event_type == "text_delta":
+                            delta = str(event.get("text", ""))
+                            accumulated += delta
+                            yield sse({"type": AgentEventType.RESPONSE_DELTA.value, "data": {"delta": delta}})
+                        elif event_type == "tool_call_delta":
+                            index = int(event.get("index", 0))
+                            state = call_buffers.setdefault(index, {"id": None, "name": None, "arguments": ""})
+                            if event.get("id"):
+                                state["id"] = event["id"]
+                            if event.get("name"):
+                                state["name"] = event["name"]
+                            state["arguments"] += str(event.get("arguments", ""))
+                            yield sse({"type": "tool.call.delta", "data": {
+                                "index": index, "id": state["id"], "name": state["name"],
+                                "arguments": event.get("arguments", ""),
+                            }})
+                        elif event_type == "done":
+                            finish_reason = event.get("finish_reason")
+
+                    if not call_buffers:
+                        break
+
+                    from app.models.tool import ToolCall
+                    calls = []
+                    for state in call_buffers.values():
+                        try:
+                            arguments = json.loads(state["arguments"] or "{}")
+                        except json.JSONDecodeError:
+                            arguments = {}
+                        calls.append(ToolCall(
+                            name=str(state["name"] or ""),
+                            arguments=arguments,
+                            id=state["id"],
+                        ))
+
+                    context.append(ChatMessage(
+                        role="assistant",
+                        content="",
+                        tool_calls=tuple(calls),
+                    ))
+                    for call in calls:
+                        result = await orchestrator.executor.execute_tool_call(call)
+                        yield sse({"type": "tool.call.result", "data": {
+                            "id": call.id or call.name,
+                            "tool": call.name,
+                            "success": result.success,
+                            "output": result.output if result.success else None,
+                            "error": result.error,
+                        }})
+                        context.append(ChatMessage(
+                            role="tool",
+                            content=str(result.output if result.success else {"error": result.error}),
+                            tool_call_id=call.id or call.name,
+                        ))
+                else:
+                    raise RuntimeError("Streaming tool-call loop exceeded 8 iterations")
                 break
             except Exception as exc:
                 failures.append(f"{choice.model}: {exc}")

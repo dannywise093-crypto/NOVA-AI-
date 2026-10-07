@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from app.models.base import ModelInfo
 from app.providers.base import ModelProvider
 
+
 @dataclass(frozen=True)
 class ModelChoice:
     model: str
     provider: ModelProvider
     reason: str
     score: float = 0.0
+
 
 class ModelRouter:
     def __init__(self, providers: list[ModelProvider]) -> None:
@@ -47,10 +49,8 @@ class ModelRouter:
         if ("agentic" in required or "coding" in required) and model.supports_tools:
             score += 8
             reasons.append("tools")
-        if model.context_window:
-            # Prefer larger contexts for document-heavy or long prompts.
-            if "documents" in required or len(task) > 12000:
-                score += min(model.context_window / 8192, 8)
+        if model.context_window and ("documents" in required or len(task) > 12000):
+            score += min(model.context_window / 8192, 8)
         if model.supports_streaming:
             score += 1
         return score, reasons
@@ -59,20 +59,22 @@ class ModelRouter:
         models = self.available_models()
         if not models:
             raise RuntimeError("No AI models are configured.")
+
         choices: list[ModelChoice] = []
         if preferred_model:
             for provider in self.providers:
                 if provider.supports(preferred_model):
                     choices.append(ModelChoice(preferred_model, provider, "explicit model preference", 1000.0))
                     break
+
         required = self._requirements(task)
         ranked: list[tuple[float, ModelInfo, ModelProvider, str]] = []
-        for model in models:
-            if model.id == preferred_model:
-                continue
-            provider = next(p for p in self.providers if p.supports(model.id))
-            score, reasons = self._score(model, required, task)
-            ranked.append((score, model, provider, "; ".join(reasons) or "general-purpose fallback"))
+        for provider in self.providers:
+            for model in provider.list_models():
+                if model.id == preferred_model:
+                    continue
+                score, reasons = self._score(model, required, task)
+                ranked.append((score, model, provider, "; ".join(reasons) or "general-purpose fallback"))
         ranked.sort(key=lambda item: item[0], reverse=True)
         choices.extend(ModelChoice(model.id, provider, reason, score) for score, model, provider, reason in ranked)
         return choices

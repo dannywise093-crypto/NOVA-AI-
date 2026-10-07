@@ -10,6 +10,7 @@ import android.provider.OpenableColumns
 import android.view.View
 import android.view.Gravity
 import android.widget.*
+import android.app.Dialog
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,7 +33,7 @@ class MainActivity : AppCompatActivity() {
     private val attachments = mutableListOf<JSONObject>()
     private var projectId: String? = null
     private val filePickerCode = 7001
-    private lateinit var authButton: Button
+    private lateinit var authButton: TextView
     private lateinit var modelSpinner: Spinner
     private lateinit var conversationSpinner: Spinner
     private lateinit var newChatButton: TextView

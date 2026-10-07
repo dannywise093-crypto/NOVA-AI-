@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private var streaming = false
     private lateinit var loginPanel: LinearLayout
     private lateinit var chatPanel: LinearLayout
+    private lateinit var authStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -160,12 +161,12 @@ class MainActivity : AppCompatActivity() {
         serverPanel.addView(hint)
         body.addView(serverPanel, LinearLayout.LayoutParams(-1, -2))
 
-        status = uiText("", 13f).apply {
+        authStatus = uiText("", 13f).apply {
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(245, 115, 115))
             setPadding(0, dp(14), 0, 0)
         }
-        body.addView(status, LinearLayout.LayoutParams(-1, -2))
+        body.addView(authStatus, LinearLayout.LayoutParams(-1, -2))
 
         authButton.setOnClickListener { authenticate() }
         create.setOnClickListener { authenticate() }
@@ -297,17 +298,52 @@ class MainActivity : AppCompatActivity() {
         return view
     }
 
+    private fun showHistoryDrawer() {
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(22), dp(18), dp(18))
+            setBackgroundColor(Color.rgb(16, 18, 24))
+        }
+        panel.addView(uiText("Your chats", 22f).apply {
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+        val newChat = uiButton("+ New chat", true)
+        panel.addView(newChat, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(12) })
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        conversations.forEach { item ->
+            val row = uiText(item.optString("title", "Chat"), 15f).apply {
+                setPadding(dp(14), 0, dp(14), 0)
+                gravity = Gravity.CENTER_VERTICAL
+                background = card(Color.rgb(25, 27, 34), 12)
+                isClickable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    openConversation(item.optString("id"))
+                }
+            }
+            list.addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(6) })
+        }
+        panel.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        newChat.setOnClickListener { dialog.dismiss(); newChat() }
+        dialog.setContentView(panel)
+        dialog.window?.setBackgroundDrawable(card(Color.rgb(16, 18, 24), 22))
+        dialog.show()
+        dialog.window?.setLayout(dp(330), -1)
+        dialog.window?.setGravity(Gravity.START or Gravity.CENTER_VERTICAL)
+    }
+
     private fun authenticate() {
         val base = endpoint.text.toString().trim().trimEnd('/')
         val userEmail = email.text.toString().trim()
         val userPassword = password.text.toString()
         if (base.isBlank() || userEmail.isBlank() || userPassword.length < 8) {
-            status.text = "Enter URL, email and 8+ character password"
+            authStatus.text = "Enter your email and an 8+ character password."
             return
         }
         prefs.edit().putString("api", base).putString("email", userEmail).apply()
         authButton.isEnabled = false
-        status.text = "Signing in..."
+        authStatus.text = "Signing in..."
         thread {
             val login = request("POST", "$base/api/auth/login",
                 JSONObject().put("email", userEmail).put("password", userPassword))
@@ -317,14 +353,14 @@ class MainActivity : AppCompatActivity() {
                 if (register.code in 200..299) {
                     finishLogin(request("POST", "$base/api/auth/login",
                         JSONObject().put("email", userEmail).put("password", userPassword)))
-                } else runOnUiThread { authError("Account creation failed: " + register.body) }
+                } else runOnUiThread { authError("Could not create the account. Check the server and try again.") }
             } else finishLogin(login)
         }
     }
 
     private fun finishLogin(result: HttpResult) {
         if (result.code !in 200..299) {
-            runOnUiThread { authError("Authentication failed: " + result.body) }
+            runOnUiThread { authError("Could not sign in. Check your connection and credentials.") }
             return
         }
         try {
@@ -332,15 +368,19 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putString("token", token).apply()
             runOnUiThread { showChat() }
         } catch (_: Exception) {
-            runOnUiThread { authError("Invalid login response") }
+            runOnUiThread { authError("Invalid server response.") }
         }
     }
 
+    private fun showLogin() {
+        loginPanel.visibility = View.VISIBLE
+        chatPanel.visibility = View.GONE
+        authButton.isEnabled = true
+    }
+
     private fun showChat() {
-        endpoint.visibility = View.GONE
-        email.visibility = View.GONE
-        password.visibility = View.GONE
-        authButton.visibility = View.GONE
+        loginPanel.visibility = View.GONE
+        chatPanel.visibility = View.VISIBLE
         message.isEnabled = true
         sendButton.isEnabled = true
         newChatButton.isEnabled = true
@@ -634,7 +674,7 @@ class MainActivity : AppCompatActivity() {
     private fun expireSession() {
         prefs.edit().remove("token").apply()
         runOnUiThread {
-            status.text = "Session expired"
+            authStatus.text = "Session expired. Please sign in again."
             sendButton.isEnabled = false
             newChatButton.isEnabled = false
             authButton.visibility = View.VISIBLE
@@ -884,7 +924,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun authError(text: String) {
-        status.text = text
+        authStatus.text = text
         authButton.isEnabled = true
     }
 

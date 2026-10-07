@@ -2,7 +2,7 @@ name: NOVA Android APK
 
 on:
   push:
-    branches: ["dev/foundation"]
+    branches: ["main", "dev/foundation"]
   workflow_dispatch:
 
 jobs:

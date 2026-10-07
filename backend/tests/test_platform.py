@@ -123,3 +123,20 @@ def test_document_extractor_handles_text_and_image_metadata():
     from app.knowledge.extract import extract_text
 
     assert extract_text(b"hello NOVA", "note.txt", "text/plain") == "hello NOVA"
+
+
+@pytest.mark.asyncio
+async def test_hash_embedding_is_normalized_and_semantically_stable():
+    from app.knowledge.embeddings import HashEmbeddingProvider
+
+    provider = HashEmbeddingProvider()
+    first = await provider.embed("NOVA research architecture")
+    second = await provider.embed("NOVA research architecture")
+    assert first == second
+    assert abs(sum(value * value for value in first) - 1.0) < 1e-6
+
+
+def test_knowledge_chunk_model_has_embedding_storage():
+    from app.db.knowledge_repository import KnowledgeChunkRow
+
+    assert hasattr(KnowledgeChunkRow, "embedding")

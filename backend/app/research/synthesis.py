@@ -19,6 +19,7 @@ class Claim:
 class Synthesis:
     claims: tuple[Claim, ...]
     evidence: tuple[Evidence, ...]
+    contradictions: tuple[tuple[str, str], ...] = ()
 
 
 class EvidenceSynthesizer:
@@ -52,4 +53,20 @@ class EvidenceSynthesizer:
                     confidence=min(0.95, 0.45 + 0.05 * len(query_terms & set(re.findall(r"\w+", sentence.lower())))),
                 ))
 
-        return Synthesis(claims=tuple(claims[:20]), evidence=tuple(ranked))
+        contradictions: list[tuple[str, str]] = []
+        for index, left in enumerate(claims):
+            for right in claims[index + 1:]:
+                left_words = set(re.findall(r"\\w+", left.text.lower()))
+                right_words = set(re.findall(r"\\w+", right.text.lower()))
+                overlap = len(left_words & right_words) / max(1, min(len(left_words), len(right_words)))
+                negation_conflict = (
+                    (" not " in f" {left.text.lower()} " and " not " not in f" {right.text.lower()} ")
+                    or (" not " in f" {right.text.lower()} " and " not " not in f" {left.text.lower()} ")
+                )
+                if overlap >= 0.65 and negation_conflict:
+                    contradictions.append((left.text, right.text))
+        return Synthesis(
+            claims=tuple(claims[:20]),
+            evidence=tuple(ranked),
+            contradictions=tuple(contradictions[:10]),
+        )

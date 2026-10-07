@@ -10,7 +10,11 @@ class MockProvider(ModelProvider):
             ModelInfo(
                 id="nova-mock",
                 provider="mock",
-                capabilities=("chat", "reasoning"),
+                capabilities=("chat", "reasoning", "coding"),
+                    context_window=32768,
+                    supports_tools=True,
+                    supports_vision=True,
+                    supports_streaming=True,
             )
         ]
 

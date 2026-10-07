@@ -1,7 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.container import build_orchestrator
+from app.auth.dependencies import get_current_user
+from app.auth.models import User
+from app.db.session import get_session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.types import ChatMessage
 
 router = APIRouter(tags=["chat"])
@@ -32,12 +36,13 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(request: ChatRequest, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> ChatResponse:
     messages = [*request.history, ChatMessage(role="user", content=request.message)]
     result = await orchestrator.run(
         task=request.message,
         messages=messages,
         preferred_model=request.model,
+        project_id=None,
     )
     return ChatResponse(
         content=result.response.content,

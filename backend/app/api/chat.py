@@ -7,6 +7,7 @@ from app.auth.models import User
 from app.db.session import get_session
 from app.db.project_repository import get_project
 from app.db.memory_repository import search_memories
+from app.memory.engine import MemoryEngine
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.types import ChatMessage
 
@@ -58,6 +59,7 @@ async def chat(request: ChatRequest, user: User = Depends(get_current_user), ses
         preferred_model=request.model,
         project_id=request.project_id,
     )
+    await MemoryEngine().remember(session, user.id, request.message, project_id=request.project_id)
     return ChatResponse(
         content=result.response.content,
         model=result.response.model,

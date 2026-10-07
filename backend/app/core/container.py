@@ -25,5 +25,5 @@ def build_providers() -> list:
 
 
 def build_orchestrator(session=None) -> AgentOrchestrator:
-    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool(session)])
+    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool(session), CodeSandboxTool()])
     return AgentOrchestrator(ModelRouter(build_providers()), tools)

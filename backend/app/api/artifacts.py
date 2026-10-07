@@ -55,13 +55,13 @@ async def upload_artifact(
         text = f"Image artifact: {filename} ({mime_type}, {len(data)} bytes). Visual understanding is delegated to a vision-capable model."
     else:
         try:
-            text = extract_text(data, filename, mime_type)
+            document = extract_document(data, filename, mime_type)\n        text = document["text"]
         except ValueError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
-    chunks = ingestor.chunk(artifact_id, text)
+    chunks = ingestor.chunk_pages(artifact_id, document["pages"]) if mime_type not in IMAGE_TYPES else ingestor.chunk(artifact_id, text)
     await vector_store.upsert(chunks)
     embeddings = [await embedding_provider.embed(chunk.text) for chunk in chunks]
-    await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text, embedding) for chunk, embedding in zip(chunks, embeddings)])
+    await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text, embedding, int(chunk.metadata["source_page"]) if chunk.metadata.get("source_page") else None) for chunk, embedding in zip(chunks, embeddings)])
     return artifact
 
 @router.get("/artifacts/{artifact_id}/content")

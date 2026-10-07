@@ -384,7 +384,7 @@ class MainActivity : AppCompatActivity() {
     private fun uploadAttachment(uri: Uri) {
         if (streaming) return
         status.text = "Uploading file..."
-        attachButton.isEnabled = false
+        attachButton.isEnabled = true
         thread {
             try {
                 val base = prefs.getString("api", "")?.trimEnd('/') ?: throw IllegalStateException("API URL missing")

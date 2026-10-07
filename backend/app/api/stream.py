@@ -13,7 +13,7 @@ from app.db.project_repository import get_project
 from app.db.memory_repository import search_memories
 from app.db.session import get_session
 from app.events import AgentEventType
-from app.models.task import Task\nfrom app.models.types import ChatMessage
+from app.models.task import Task\nfrom app.models.types import ChatMessage, ContentPart
 
 router = APIRouter(tags=["stream"])
 
@@ -22,6 +22,7 @@ class StreamRequest(BaseModel):
     messages: list[ChatMessage] = Field(default_factory=list)
     model: str | None = None
     project_id: str | None = None
+    attachments: list[dict[str, str | None]] = []
 
 def sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\\n\\n"
@@ -44,7 +45,16 @@ async def event_stream(
             role="system",
             content="Relevant NOVA memories (use only when helpful):\\n" + "\\n".join(f"- {m.content}" for m in memories),
         ))
-    messages.append(ChatMessage(role="user", content=request.goal))
+    parts = tuple(
+        ContentPart(
+            type=str(item.get("type") or "file"),
+            uri=str(item["uri"]),
+            mime_type=item.get("mime_type"),
+        )
+        for item in request.attachments
+        if item.get("uri")
+    )
+    messages.append(ChatMessage(role="user", content=request.goal, parts=parts))
     orchestrator = build_orchestrator(session)
     try:
         yield sse({"type": AgentEventType.TASK_STARTED.value, "message": request.goal})

@@ -285,52 +285,21 @@ class MainActivity : AppCompatActivity() {
         setHintTextColor(Color.GRAY)
     }
 
-    private fun bubble(text: String, user: Boolean): TextView {
+    private fun bubble(value: String, user: Boolean): TextView {
         val view = TextView(this).apply {
-            this.text = text
+            text = value
             textSize = 16f
             setTextColor(Color.WHITE)
-            setPadding(18, 14, 18, 14)
-            setBackgroundColor(if (user) Color.rgb(45, 45, 55) else Color.rgb(28, 42, 36))
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = if (user) card(Color.rgb(42, 45, 55), 18) else ColorDrawable(Color.TRANSPARENT)
         }
-        val params = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 8, 0, 8) }
-        messages.addView(view, params)
+        val row = LinearLayout(this).apply {
+            gravity = if (user) Gravity.END else Gravity.START
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            addView(view, LinearLayout.LayoutParams(if (user) dp(315) else -1, -2))
+        }
+        messages.addView(row, LinearLayout.LayoutParams(-1, -2))
         return view
-    }
-
-    private fun showHistoryDrawer() {
-        val dialog = Dialog(this)
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(22), dp(18), dp(18))
-            setBackgroundColor(Color.rgb(16, 18, 24))
-        }
-        panel.addView(uiText("Your chats", 22f).apply {
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
-        val newChat = uiButton("+ New chat", true)
-        panel.addView(newChat, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(12) })
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        conversations.forEach { item ->
-            val row = uiText(item.optString("title", "Chat"), 15f).apply {
-                setPadding(dp(14), 0, dp(14), 0)
-                gravity = Gravity.CENTER_VERTICAL
-                background = card(Color.rgb(25, 27, 34), 12)
-                isClickable = true
-                setOnClickListener {
-                    dialog.dismiss()
-                    openConversation(item.optString("id"))
-                }
-            }
-            list.addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(6) })
-        }
-        panel.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        newChat.setOnClickListener { dialog.dismiss(); newChat() }
-        dialog.setContentView(panel)
-        dialog.window?.setBackgroundDrawable(card(Color.rgb(16, 18, 24), 22))
-        dialog.show()
-        dialog.window?.setLayout(dp(330), -1)
-        dialog.window?.setGravity(Gravity.START or Gravity.CENTER_VERTICAL)
     }
 
     private fun authenticate() {

@@ -61,3 +61,17 @@ from app.tools.permissions import PermissionPolicy, ToolPermission
 def test_permission_policy_blocks_network_by_default():
     assert PermissionPolicy().allowed("network") is False
     assert PermissionPolicy(ToolPermission(allow_network=True)).allowed("network") is True
+
+
+from app.conversations.base import Conversation, Message
+from app.conversations.store import ConversationStore
+
+
+def test_conversation_store_persists_messages():
+    store = ConversationStore()
+    conversation = store.create(Conversation("conv-1", "NOVA task"))
+    conversation.add_message(Message("msg-1", "user", "Build NOVA"))
+    store.save(conversation)
+    loaded = store.get("conv-1")
+    assert loaded is not None
+    assert loaded.messages[0].content == "Build NOVA"

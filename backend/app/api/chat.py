@@ -1,24 +1,25 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.agents.orchestrator import AgentOrchestrator
+from app.core.container import build_orchestrator
 from app.models.types import ChatMessage
-from app.providers.mock import MockProvider
-from app.router import ModelRouter
 
 router = APIRouter(tags=["chat"])
-orchestrator = AgentOrchestrator(ModelRouter([MockProvider()]))
+orchestrator = build_orchestrator()
+
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     history: list[ChatMessage] = Field(default_factory=list)
     model: str | None = None
 
+
 class ChatResponse(BaseModel):
     content: str
     model: str
     provider: str
     routing_reason: str
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:

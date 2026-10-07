@@ -27,5 +27,7 @@ def build_providers() -> list:
 
 
 def build_orchestrator(session=None) -> AgentOrchestrator:
-    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool(session, query_expander=lambda query: expand_with_model(query, build_providers()[0] if build_providers() else None, settings.model_name)), CodeSandboxTool()])
+    providers = build_providers()
+    expander = lambda query: expand_with_model(query, providers[0], settings.model_name) if settings.model_name else expand_with_model(query)
+    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool(session, query_expander=expander), CodeSandboxTool()])
     return AgentOrchestrator(ModelRouter(build_providers()), tools)

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.container import build_orchestrator
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.db.session import get_session
+from app.db.project_repository import get_project
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.types import ChatMessage
 
@@ -16,6 +17,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     history: list[ChatMessage] = Field(default_factory=list)
     model: str | None = None
+    project_id: str | None = None
 
 
 class PlanStepResponse(BaseModel):
@@ -37,12 +39,14 @@ class ChatResponse(BaseModel):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> ChatResponse:
+    if request.project_id is not None and await get_project(session, request.project_id, user.id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     messages = [*request.history, ChatMessage(role="user", content=request.message)]
-    result = await orchestrator.run(
+    result = await build_orchestrator(session).run(
         task=request.message,
         messages=messages,
         preferred_model=request.model,
-        project_id=None,
+        project_id=request.project_id,
     )
     return ChatResponse(
         content=result.response.content,

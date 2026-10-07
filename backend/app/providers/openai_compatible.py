@@ -56,16 +56,44 @@ class OpenAICompatibleProvider(ModelProvider):
             provider=self.provider_name, usage={k: int(v) for k,v in usage.items() if isinstance(v,(int,float))},
             finish_reason=choice.get("finish_reason"), tool_calls=tuple(calls))
 
-    async def stream(self, model: str, request: ModelRequest) -> AsyncIterator[str]:
+    async def stream_events(self, model: str, request: ModelRequest):
+        tool_buffers: dict[int, dict[str, str | None]] = {}
         async with httpx.AsyncClient(timeout=90.0) as client:
-            async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self._headers(), json=self._payload(model, request, True)) as response:
+            async with client.stream(
+                "POST", f"{self.base_url}/chat/completions",
+                headers=self._headers(), json=self._payload(model, request, True),
+            ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
-                    if not line or not line.startswith("data:"): continue
+                    if not line or not line.startswith("data:"):
+                        continue
                     payload = line[5:].strip()
-                    if payload == "[DONE]": break
-                    try: data = json.loads(payload)
-                    except json.JSONDecodeError: continue
+                    if payload == "[DONE]":
+                        yield {"type": "done", "finish_reason": None}
+                        break
+                    try:
+                        data = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
                     for choice in data.get("choices", []):
-                        delta = choice.get("delta", {}).get("content")
-                        if delta: yield delta
+                        delta = choice.get("delta", {})
+                        if delta.get("content"):
+                            yield {"type": "text_delta", "text": delta["content"]}
+                        for call in delta.get("tool_calls") or []:
+                            index = int(call.get("index", 0))
+                            function = call.get("function") or {}
+                            state = tool_buffers.setdefault(index, {"id": None, "name": None})
+                            if call.get("id"):
+                                state["id"] = call["id"]
+                            if function.get("name"):
+                                state["name"] = function["name"]
+                            yield {
+                                "type": "tool_call_delta",
+                                "index": index,
+                                "id": state["id"],
+                                "name": state["name"],
+                                "arguments": function.get("arguments", ""),
+                            }
+                        finish = choice.get("finish_reason")
+                        if finish is not None:
+                            yield {"type": "done", "finish_reason": finish}

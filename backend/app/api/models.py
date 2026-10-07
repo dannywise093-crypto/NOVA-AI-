@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
-from app.providers.mock import MockProvider
+from app.core.container import build_providers
 from app.router import ModelRouter
 
 router = APIRouter(tags=["models"])
-router_instance = ModelRouter([MockProvider()])
+router_instance = ModelRouter(build_providers())
+
 
 @router.get("/models")
 async def models() -> list[dict[str, object]]:

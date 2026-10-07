@@ -149,3 +149,26 @@ async def complete_task(
     )
     await session.commit()
     return updated.rowcount == 1
+
+
+
+async def complete_task(session: AsyncSession, task_id: str, claim_token: datetime, result_text: str) -> bool:
+    """Complete only the worker that still owns the original claim."""
+    now = datetime.now(timezone.utc)
+    updated = await session.execute(
+        update(AgentTaskRow)
+        .where(
+            AgentTaskRow.id == task_id,
+            AgentTaskRow.status == TaskStatus.RUNNING,
+            AgentTaskRow.heartbeat_at == claim_token,
+        )
+        .values(
+            status=TaskStatus.COMPLETED,
+            progress=100,
+            result=result_text,
+            lease_until=None,
+            updated_at=now,
+        )
+    )
+    await session.commit()
+    return updated.rowcount == 1

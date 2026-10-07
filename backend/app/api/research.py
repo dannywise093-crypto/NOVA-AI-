@@ -6,6 +6,9 @@ from app.research.http_provider import HttpSearchProvider
 from app.research.engine import ResearchEngine
 from app.research.synthesis import EvidenceSynthesizer
 from app.research.search import UnconfiguredSearchProvider
+from app.research.model_synthesis import ModelResearchSynthesizer
+from app.core.container import build_providers
+from app.router import ModelRouter
 
 router = APIRouter(tags=["research"])
 
@@ -26,10 +29,17 @@ async def research_search(request: ResearchRequest) -> dict[str, object]:
     engine = ResearchEngine(provider)
     bundle = await engine.gather(request.query, rounds=2, limit_per_round=request.limit)
     synthesis = EvidenceSynthesizer().synthesize(request.query, list(bundle.evidence))
+    report = await ModelResearchSynthesizer(ModelRouter(build_providers())).synthesize(request.query, synthesis)
     return {
         "query": request.query,
         "sources": [source.__dict__ for source in bundle.sources],
         "claims": [claim.__dict__ for claim in synthesis.claims],
+        "report": {
+            "answer": report.answer,
+            "model": report.model,
+            "provider": report.provider,
+            "citations": list(report.citations),
+        },
         "evidence": [
             {
                 "uri": item.uri,

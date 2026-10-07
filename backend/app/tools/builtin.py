@@ -19,8 +19,9 @@ class WebSearchTool:
         return ToolResult(tool=self.spec.name, output={"status": "not_configured", "query": arguments.get("query", "")}, success=False, error="Web search provider not configured")
 
 class KnowledgeRetrieveTool:
-    def __init__(self, session: AsyncSession | None = None) -> None:
+    def __init__(self, session: AsyncSession | None = None, query_expander=None) -> None:
         self.session = session
+        self.query_expander = query_expander
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec("knowledge.retrieve", "Retrieve relevant indexed project knowledge", ("knowledge",))
@@ -33,7 +34,10 @@ class KnowledgeRetrieveTool:
             return ToolResult(self.spec.name, {"items": [], "query": query}, False, "query and project_id are required")
         limit = min(max(int(arguments.get("limit", 8)), 1), 20)
         artifact_id = str(arguments.get("artifact_id", "")).strip() or None
-        queries = expand_query(query, max_queries=4)
+        if self.query_expander is not None:
+            queries = await self.query_expander(query)
+        else:
+            queries = expand_query(query, max_queries=4)
         merged = {}
         for expanded_query in queries:
             items = await search_chunks(

@@ -2,10 +2,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
 
 @dataclass(frozen=True)
 class Artifact:
@@ -15,12 +13,12 @@ class Artifact:
     uri: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class Project:
     id: str
     name: str
     description: str = ""
+    owner_id: str | None = None
     artifact_ids: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)

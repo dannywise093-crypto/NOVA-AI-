@@ -3,6 +3,7 @@ from app.core.config import settings
 from app.providers.mock import MockProvider
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.router import ModelRouter
+from app.tools.registry import ToolRegistry
 
 
 def build_providers() -> list:
@@ -23,4 +24,4 @@ def build_providers() -> list:
 
 
 def build_orchestrator() -> AgentOrchestrator:
-    return AgentOrchestrator(ModelRouter(build_providers()))
+    return AgentOrchestrator(ModelRouter(build_providers()), ToolRegistry())

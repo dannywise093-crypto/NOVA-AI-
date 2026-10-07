@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+
+from app.core.config import settings
 from app.api.chat import router as chat_router
 from app.api.health import router as health_router
 from app.api.models import router as models_router
@@ -10,6 +12,8 @@ from app.api.research import router as research_router
 from app.api.events import router as events_router
 from app.api.conversations import router as conversations_router
 from app.api.artifacts import router as artifacts_router
+from app.api.auth import router as auth_router
+from app.db.bootstrap import create_schema
 
 app = FastAPI(
     title="NOVA AI API",
@@ -28,6 +32,12 @@ app.include_router(research_router, prefix="/api")
 app.include_router(events_router, prefix="/api")
 app.include_router(conversations_router, prefix="/api")
 app.include_router(artifacts_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+
+@app.on_event("startup")
+async def startup() -> None:
+    if settings.environment != "production":
+        await create_schema()
 
 
 @app.get("/")

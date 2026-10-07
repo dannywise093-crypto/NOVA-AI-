@@ -3,13 +3,12 @@ from pydantic import BaseModel, Field
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
-from app.conversations.store import ConversationStore
+from app.conversations.runtime import conversation_store
 from app.core.container import build_orchestrator
 from app.models.types import ChatMessage
 
 router = APIRouter(tags=["tasks"])
 orchestrator = build_orchestrator()
-conversation_store = ConversationStore()
 
 class TaskRequest(BaseModel):
     goal: str = Field(min_length=1)

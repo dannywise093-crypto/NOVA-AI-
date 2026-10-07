@@ -47,9 +47,9 @@ class AgentOrchestrator:
             events.append(AgentEvent(AgentEventType.PLAN_CREATED, data={"steps": len(plan.steps)}))
         return events
 
-    async def run(self, task: str, messages: list[ChatMessage], preferred_model: str | None = None) -> AgentResult:
+    async def run(self, task: str, messages: list[ChatMessage], preferred_model: str | None = None, *, project_id: str | None = None) -> AgentResult:
         capabilities = self.infer_capabilities(task)
-        plan = self.planner.plan(Task(goal=task, capabilities=capabilities))
+        plan = self.planner.plan(Task(goal=task, capabilities=capabilities, metadata={"project_id": project_id} if project_id else {}))
         trace = await self.executor.execute(plan)
         request = ModelRequest(messages=tuple(messages), metadata={"capabilities": [c.value for c in capabilities]})
         failures: list[str] = []

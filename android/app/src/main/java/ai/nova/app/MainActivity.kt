@@ -39,6 +39,8 @@ class MainActivity : AppCompatActivity() {
     private var loadingConversation = false
     private val history = mutableListOf<JSONObject>()
     private var streaming = false
+    private lateinit var loginPanel: LinearLayout
+    private lateinit var chatPanel: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,95 +48,232 @@ class MainActivity : AppCompatActivity() {
         if (prefs.getString("token", null) != null) showChat()
     }
 
-    private fun buildUi() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(15, 15, 18))
-            setPadding(20, 20, 20, 16)
-        }
-        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val title = TextView(this).apply {
-            text = "NOVA"
-            textSize = 28f
-            setTextColor(Color.WHITE)
-        }
-        status = TextView(this).apply {
-            text = "Offline"
-            textSize = 13f
-            setTextColor(Color.LTGRAY)
-            gravity = Gravity.END
-        }
-        header.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(status)
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-        progress = TextView(this).apply {
-            text = ""
-            textSize = 12f
-            setTextColor(Color.LTGRAY)
-            setPadding(4, 4, 4, 8)
+    private fun card(color: Int, radius: Int = 18): GradientDrawable =
+        GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
+
+    private fun uiText(value: String, size: Float = 15f): TextView = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(Color.WHITE)
+    }
+
+    private fun uiInput(hintValue: String, value: String = ""): EditText = EditText(this).apply {
+        hint = hintValue
+        setText(value)
+        textSize = 16f
+        setTextColor(Color.WHITE)
+        setHintTextColor(Color.rgb(105, 110, 123))
+        setPadding(dp(16), 0, dp(16), 0)
+        background = card(Color.rgb(28, 30, 38), 14)
+        minHeight = dp(54)
+        isSingleLine = true
+    }
+
+    private fun uiButton(value: String, primary: Boolean = false): TextView = TextView(this).apply {
+        text = value
+        textSize = 15f
+        gravity = Gravity.CENTER
+        setTextColor(Color.WHITE)
+        background = card(if (primary) Color.rgb(124, 92, 255) else Color.rgb(31, 33, 42), 14)
+        minHeight = dp(50)
+        setPadding(dp(14), 0, dp(14), 0)
+        isClickable = true
+    }
+
+    private fun buildUi() {
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(11, 13, 18)) }
+        loginPanel = buildLoginPanel()
+        chatPanel = buildChatPanel()
+        root.addView(loginPanel, FrameLayout.LayoutParams(-1, -1))
+        root.addView(chatPanel, FrameLayout.LayoutParams(-1, -1))
+        chatPanel.visibility = View.GONE
+        setContentView(root)
+    }
+
+    private fun buildLoginPanel(): LinearLayout {
+        val scroll = ScrollView(this)
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(28), dp(42), dp(28), dp(24))
+        }
+        scroll.addView(body)
+
+        val logo = ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+        }
+        body.addView(logo, LinearLayout.LayoutParams(dp(92), dp(92)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            bottomMargin = dp(20)
+        })
+
+        val title = uiText("Welcome to NOVA", 30f).apply {
+            gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        body.addView(title, LinearLayout.LayoutParams(-1, -2))
+
+        val subtitle = uiText("Think. Create. Research. Build.", 15f).apply {
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(150, 155, 170))
+            setPadding(0, dp(8), 0, dp(30))
+        }
+        body.addView(subtitle, LinearLayout.LayoutParams(-1, -2))
+
+        email = uiInput("Email", prefs.getString("email", "") ?: "")
+        password = uiInput("Password")
+        password.inputType = 129
+        body.addView(email, LinearLayout.LayoutParams(-1, dp(54)).apply { bottomMargin = dp(12) })
+        body.addView(password, LinearLayout.LayoutParams(-1, dp(54)).apply { bottomMargin = dp(14) })
+
+        authButton = uiButton("Continue", true)
+        body.addView(authButton, LinearLayout.LayoutParams(-1, dp(54)).apply { bottomMargin = dp(12) })
+
+        val create = uiText("Create a new NOVA account", 14f).apply {
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(165, 168, 180))
+            isClickable = true
+        }
+        body.addView(create, LinearLayout.LayoutParams(-1, dp(44)))
+
+        val advanced = uiText("Server connection  ›", 13f).apply {
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(115, 120, 135))
+            isClickable = true
+            setPadding(0, dp(16), 0, dp(8))
+        }
+        body.addView(advanced, LinearLayout.LayoutParams(-1, -2))
+
+        serverPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
-
-        endpoint = field("API base URL", prefs.getString("api", "http://10.0.2.2:8000"))
-        email = field("Email", prefs.getString("email", ""))
-        password = field("Password", "")
-        password.inputType = 129
-        authButton = Button(this).apply { text = "Sign In / Create Account" }
-        val chatBar = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        conversationSpinner = Spinner(this)
-        newChatButton = Button(this).apply { text = "New Chat" }
-        chatBar.addView(conversationSpinner, LinearLayout.LayoutParams(0, -2, 1f))
-        chatBar.addView(newChatButton, LinearLayout.LayoutParams(-2, -2))
-
-        modelSpinner = Spinner(this)
-
-        messages = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(this).apply { addView(messages) }
-
-        message = EditText(this).apply {
-            hint = "Message NOVA..."
-            minLines = 2
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            setBackgroundColor(Color.rgb(30, 30, 35))
-            isEnabled = false
+        endpoint = uiInput("Server URL", prefs.getString("api", "http://10.0.2.2:8000") ?: "http://10.0.2.2:8000")
+        serverPanel.addView(endpoint, LinearLayout.LayoutParams(-1, dp(54)))
+        val hint = uiText("Use your computer's LAN IP on a real phone, or HTTPS in production.", 12f).apply {
+            setTextColor(Color.rgb(110, 115, 128))
+            setPadding(dp(4), dp(8), dp(4), 0)
         }
-        sendButton = Button(this).apply {
-            text = "Send"
-            isEnabled = false
-        }
-        val composer = LinearLayout(this).apply {
-            gravity = Gravity.BOTTOM
-            addView(message, LinearLayout.LayoutParams(0, -2, 1f))
-            attachButton = Button(this@MainActivity).apply { text = "＋ File"; isEnabled = false }
-            addView(attachButton, LinearLayout.LayoutParams(-2, -2))
-            addView(sendButton, LinearLayout.LayoutParams(-2, -2))
-        }
+        serverPanel.addView(hint)
+        body.addView(serverPanel, LinearLayout.LayoutParams(-1, -2))
 
-        root.addView(header)
-        root.addView(progress)
-        root.addView(endpoint)
-        root.addView(email)
-        root.addView(password)
-        root.addView(authButton)
-        root.addView(chatBar)
-        root.addView(modelSpinner)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(composer)
-        setContentView(root)
+        status = uiText("", 13f).apply {
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(245, 115, 115))
+            setPadding(0, dp(14), 0, 0)
+        }
+        body.addView(status, LinearLayout.LayoutParams(-1, -2))
 
         authButton.setOnClickListener { authenticate() }
+        create.setOnClickListener { authenticate() }
+        advanced.setOnClickListener {
+            serverPanel.visibility = if (serverPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+    }
+
+    private fun buildChatPanel(): LinearLayout {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(11, 13, 18))
+        }
+
+        val top = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+        }
+        val menu = uiText("☰", 24f).apply { gravity = Gravity.CENTER; isClickable = true }
+        top.addView(menu, LinearLayout.LayoutParams(dp(48), dp(46)))
+
+        val logo = ImageView(this).apply { setImageResource(R.mipmap.ic_launcher); scaleType = ImageView.ScaleType.CENTER_INSIDE }
+        top.addView(logo, LinearLayout.LayoutParams(dp(38), dp(38)))
+
+        val nameBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), 0, 0, 0) }
+        val name = uiText("NOVA", 18f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD) }
+        status = uiText("Ready", 11f).apply { setTextColor(Color.rgb(145, 150, 165)) }
+        nameBox.addView(name)
+        nameBox.addView(status)
+        top.addView(nameBox, LinearLayout.LayoutParams(0, -2, 1f))
+
+        modelSpinner = Spinner(this)
+        top.addView(modelSpinner, LinearLayout.LayoutParams(dp(112), dp(42)))
+        root.addView(top)
+
+        val line = View(this).apply { setBackgroundColor(Color.rgb(32, 34, 42)) }
+        root.addView(line, LinearLayout.LayoutParams(-1, 1))
+
+        val chatActions = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+        }
+        conversationSpinner = Spinner(this)
+        newChatButton = uiButton("+ New chat")
+        chatActions.addView(conversationSpinner, LinearLayout.LayoutParams(0, dp(44), 1f))
+        chatActions.addView(newChatButton, LinearLayout.LayoutParams(dp(112), dp(44)))
+        root.addView(chatActions)
+
+        progress = uiText("", 12f).apply {
+            setTextColor(Color.rgb(145, 150, 165))
+            setPadding(dp(18), 0, dp(18), dp(6))
+            visibility = View.GONE
+        }
+        root.addView(progress)
+
+        messages = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(8), dp(14), dp(18))
+        }
+        val scroll = ScrollView(this).apply { addView(messages) }
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        val composerOuter = LinearLayout(this).apply { setPadding(dp(10), dp(8), dp(10), dp(12)) }
+        val composer = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = card(Color.rgb(27, 29, 37), 20)
+            setPadding(dp(8), dp(5), dp(6), dp(5))
+        }
+        message = EditText(this).apply {
+            hint = "Message NOVA"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.rgb(100, 105, 118))
+            background = null
+            minLines = 1
+            maxLines = 5
+            isEnabled = false
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        composer.addView(message, LinearLayout.LayoutParams(0, -2, 1f))
+        attachButton = uiText("＋", 24f).apply { gravity = Gravity.CENTER; setTextColor(Color.rgb(160, 164, 175)); isEnabled = false }
+        composer.addView(attachButton, LinearLayout.LayoutParams(dp(46), dp(46)))
+        sendButton = uiText("↑", 24f).apply {
+            gravity = Gravity.CENTER
+            background = card(Color.rgb(124, 92, 255), 16)
+            isEnabled = false
+        }
+        composer.addView(sendButton, LinearLayout.LayoutParams(dp(46), dp(46)))
+        composerOuter.addView(composer, LinearLayout.LayoutParams(-1, -2))
+        root.addView(composerOuter)
+
+        menu.setOnClickListener { showHistoryDrawer() }
+        newChatButton.setOnClickListener { newChat() }
         sendButton.setOnClickListener { sendMessage() }
         attachButton.setOnClickListener { pickFile() }
-        newChatButton.setOnClickListener { newChat() }
+
         conversationSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (!loadingConversation && position in conversations.indices) {
-                    openConversation(conversations[position].optString("id"))
-                }
+                if (!loadingConversation && position in conversations.indices) openConversation(conversations[position].optString("id"))
             }
         }
+        return root
     }
 
     private fun field(hintText: String, value: String?): EditText = EditText(this).apply {

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from uuid import uuid4
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,9 +10,6 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.db.session import get_session
 from app.db.task_repository import AgentTaskRow, TaskStatus, create_task, get_task, update_task
-from app.db.session import SessionFactory
-from app.core.container import build_orchestrator
-from app.models.types import ChatMessage
 
 router = APIRouter(tags=["agent-tasks"])
 
@@ -36,39 +33,8 @@ def view(task: AgentTaskRow) -> AgentTaskView:
                          progress=task.progress, result=task.result, error=task.error)
 
 
-async def _execute_task(task_id: str, owner_id: str) -> None:
-    async with SessionFactory() as session:
-        task = await get_task(session, task_id, owner_id)
-        if task is None or task.status == TaskStatus.CANCELLED:
-            return
-        await update_task(session, task, status=TaskStatus.RUNNING, progress=10)
-
-    try:
-        async with SessionFactory() as session:
-            task = await get_task(session, task_id, owner_id)
-            if task is None or task.status == TaskStatus.CANCELLED:
-                return
-            orchestrator = build_orchestrator(session)
-            result = await orchestrator.run(
-                task.goal,
-                [ChatMessage(role="user", content=task.goal)],
-            )
-            await update_task(
-                session, task, status=TaskStatus.COMPLETED,
-                progress=100, result=result.response.content,
-            )
-    except Exception as exc:
-        async with SessionFactory() as session:
-            task = await get_task(session, task_id, owner_id)
-            if task is not None and task.status != TaskStatus.CANCELLED:
-                await update_task(
-                    session, task, status=TaskStatus.FAILED,
-                    progress=100, error=str(exc)[:4000],
-                )
-
-
 @router.post("/agent-tasks", response_model=AgentTaskView)
-async def create_agent_task(request: AgentTaskCreate, background_tasks: BackgroundTasks, user: User = Depends(get_current_user),
+async def create_agent_task(request: AgentTaskCreate, user: User = Depends(get_current_user),
                             session: AsyncSession = Depends(get_session)) -> AgentTaskView:
     now = datetime.now(timezone.utc)
     task = AgentTaskRow(
@@ -77,7 +43,6 @@ async def create_agent_task(request: AgentTaskCreate, background_tasks: Backgrou
         created_at=now, updated_at=now,
     )
     created = await create_task(session, task)
-    background_tasks.add_task(_execute_task, created.id, user.id)
     return view(created)
 
 

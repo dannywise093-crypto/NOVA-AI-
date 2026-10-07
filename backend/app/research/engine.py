@@ -4,17 +4,20 @@ from dataclasses import dataclass
 
 from app.research.base import ResearchSource
 from app.research.search import SearchProvider
+from app.research.reader import Evidence, SourceReader
 
 
 @dataclass(frozen=True)
 class ResearchBundle:
     query: str
     sources: tuple[ResearchSource, ...]
+    evidence: tuple[Evidence, ...] = ()
 
 
 class ResearchEngine:
     def __init__(self, provider: SearchProvider) -> None:
         self.provider = provider
+        self.reader = reader or SourceReader()
 
     async def gather(self, query: str, *, rounds: int = 2, limit_per_round: int = 6) -> ResearchBundle:
         """Gather multiple result sets while deduplicating URLs."""
@@ -30,4 +33,9 @@ class ResearchEngine:
                     continue
                 seen.add(source.uri)
                 sources.append(source)
-        return ResearchBundle(query=query, sources=tuple(sources))
+        evidence: list[Evidence] = []
+        for source in sources[:12]:
+            item = await self.reader.read(source.uri, title=source.title)
+            if item is not None:
+                evidence.append(item)
+        return ResearchBundle(query=query, sources=tuple(sources), evidence=tuple(evidence))

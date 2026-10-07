@@ -2,6 +2,9 @@ package ai.nova.app
 
 import android.graphics.Color
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.view.View
 import android.view.Gravity
 import android.widget.*
@@ -23,6 +26,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: TextView
     private lateinit var messages: LinearLayout
     private lateinit var sendButton: Button
+    private lateinit var attachButton: Button
+    private val attachments = mutableListOf<JSONObject>()
+    private var projectId: String? = null
+    private val filePickerCode = 7001
     private lateinit var authButton: Button
     private lateinit var modelSpinner: Spinner
     private lateinit var conversationSpinner: Spinner
@@ -99,6 +106,8 @@ class MainActivity : AppCompatActivity() {
         val composer = LinearLayout(this).apply {
             gravity = Gravity.BOTTOM
             addView(message, LinearLayout.LayoutParams(0, -2, 1f))
+            attachButton = Button(this@MainActivity).apply { text = "＋ File" }
+            addView(attachButton, LinearLayout.LayoutParams(-2, -2))
             addView(sendButton, LinearLayout.LayoutParams(-2, -2))
         }
 
@@ -116,6 +125,7 @@ class MainActivity : AppCompatActivity() {
 
         authButton.setOnClickListener { authenticate() }
         sendButton.setOnClickListener { sendMessage() }
+        attachButton.setOnClickListener { pickFile() }
         newChatButton.setOnClickListener { newChat() }
         conversationSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -198,6 +208,7 @@ class MainActivity : AppCompatActivity() {
         status.text = "● Ready"
         modelSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, arrayOf("Auto"))
         loadModels()
+        loadProject()
         loadConversations()
         if (messages.childCount == 0) bubble("I'm NOVA. Ask me anything.", false)
     }
@@ -257,6 +268,7 @@ class MainActivity : AppCompatActivity() {
         if (streaming) return
         conversationId = null
         history.clear()
+        attachments.clear()
         messages.removeAllViews()
         bubble("New conversation. Ask NOVA anything.", false)
         status.text = "● New chat"
@@ -301,6 +313,137 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { status.text = "Invalid conversation" }
             }
         }
+    }
+
+    private fun pickFile() {
+        if (streaming) return
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+        }
+        startActivityForResult(intent, filePickerCode)
+    }
+
+    @Deprecated("Use Activity Result APIs when the Android client moves to Compose.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == filePickerCode && resultCode == RESULT_OK) {
+            data?.data?.let { uploadAttachment(it) }
+        }
+    }
+
+    private fun loadProject() {
+        val base = prefs.getString("api", "")?.trimEnd('/') ?: return
+        thread {
+            val result = request("GET", "${base}/api/projects", auth = authHeader())
+            if (result.code == 401) {
+                expireSession()
+                return@thread
+            }
+            if (result.code !in 200..299) return@thread
+            try {
+                val projects = JSONArray(result.body)
+                if (projects.length() > 0) {
+                    projectId = projects.getJSONObject(0).optString("id").ifBlank { null }
+                    return@thread
+                }
+                val id = UUID.randomUUID().toString()
+                val created = request(
+                    "POST", "${base}/api/projects",
+                    JSONObject().put("id", id).put("name", "NOVA Workspace")
+                        .put("description", "Default workspace for NOVA conversations and files"),
+                    authHeader()
+                )
+                if (created.code in 200..299) projectId = id
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun uploadAttachment(uri: Uri) {
+        if (streaming) return
+        status.text = "Uploading file..."
+        attachButton.isEnabled = false
+        thread {
+            try {
+                val base = prefs.getString("api", "")?.trimEnd('/') ?: throw IllegalStateException("API URL missing")
+                val project = projectId ?: throw IllegalStateException("NOVA workspace is still loading")
+                val resolver = contentResolver
+                val name = queryFileName(uri) ?: "upload"
+                val mime = resolver.getType(uri) ?: "application/octet-stream"
+                val size = queryFileSize(uri)
+                if (size > 10L * 1024L * 1024L) throw IllegalArgumentException("File exceeds the 10 MB limit")
+                val boundary = "----NOVA-${System.currentTimeMillis()}"
+                val connection = (URL("${base}/api/artifacts/upload").openConnection() as HttpURLConnection)
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 120_000
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Authorization", authHeader())
+                connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=${boundary}")
+                connection.outputStream.use { out ->
+                    fun field(fieldName: String, value: String) {
+                        out.write("--${boundary}\r\n".toByteArray())
+                        out.write("Content-Disposition: form-data; name=\"${fieldName}\"\r\n\r\n".toByteArray())
+                        out.write(value.toByteArray())
+                        out.write("\r\n".toByteArray())
+                    }
+                    field("project_id", project)
+                    out.write("--${boundary}\r\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\"file\"; filename=\"${name.replace("\"", "_")}\"\r\n".toByteArray())
+                    out.write("Content-Type: ${mime}\r\n\r\n".toByteArray())
+                    resolver.openInputStream(uri)?.use { input ->
+                        val buffer = ByteArray(8192)
+                        var total = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            total += read
+                            if (total > 10L * 1024L * 1024L) throw IllegalArgumentException("File exceeds the 10 MB limit")
+                            out.write(buffer, 0, read)
+                        }
+                    } ?: throw IllegalArgumentException("Cannot read selected file")
+                    out.write("\r\n--${boundary}--\r\n".toByteArray())
+                }
+                val code = connection.responseCode
+                val body = (if (code >= 400) connection.errorStream else connection.inputStream)?.bufferedReader()?.use { it.readText() } ?: ""
+                connection.disconnect()
+                if (code !in 200..299) throw IllegalStateException(body.ifBlank { "Upload failed (${code})" })
+                val artifact = JSONObject(body)
+                val item = JSONObject()
+                    .put("artifact_id", artifact.getString("id"))
+                    .put("type", if (mime.startsWith("image/")) "image_url" else "file")
+                    .put("mime_type", artifact.optString("mime_type", mime))
+                    .put("name", artifact.optString("name", name))
+                attachments.add(item)
+                runOnUiThread {
+                    status.text = "Attached: ${item.optString("name")}"
+                    progress.visibility = View.VISIBLE
+                    progress.text = "Attachments ready: ${attachments.size}"
+                    attachButton.isEnabled = true
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text = "Upload failed"
+                    progress.text = e.message ?: "Could not upload file"
+                    attachButton.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun queryFileName(uri: Uri): String? {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) return cursor.getString(0)
+        }
+        return uri.lastPathSegment
+    }
+
+    private fun queryFileSize(uri: Uri): Long {
+        contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) return cursor.getLong(0)
+        }
+        return -1L
     }
 
     private fun ensureConversation(userText: String): String? {
@@ -363,6 +506,10 @@ class MainActivity : AppCompatActivity() {
         val payload = JSONObject()
             .put("goal", text)
             .put("messages", historyArray)
+        projectId?.let { payload.put("project_id", it) }
+        val attachmentArray = JSONArray()
+        attachments.forEach { attachmentArray.put(JSONObject(it.toString())) }
+        payload.put("attachments", attachmentArray)
         val selectedModel = modelSpinner.selectedItem?.toString()?.trim()
         if (!selectedModel.isNullOrBlank() && selectedModel != "Auto") {
             payload.put("model", selectedModel)

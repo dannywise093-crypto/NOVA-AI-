@@ -13,7 +13,6 @@ from app.api.events import router as events_router
 from app.api.conversations_db import router as conversations_router
 from app.api.artifacts import router as artifacts_router
 from app.api.auth_db import router as auth_router
-from app.db.bootstrap import create_schema
 
 app = FastAPI(
     title="NOVA AI API",
@@ -36,7 +35,8 @@ app.include_router(auth_router, prefix="/api")
 
 @app.on_event("startup")
 async def startup() -> None:
-    if settings.environment != "production":
+    if settings.environment == "development":
+        from app.db.bootstrap import create_schema
         await create_schema()
 
 

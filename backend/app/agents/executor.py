@@ -35,11 +35,17 @@ class AgentExecutor:
                 spec = next((s for s in self.tools.specs() if s.name == step.tool), None)
                 if spec is None:
                     result = ToolResult(step.tool, None, False, "Tool is not registered")
+                elif spec.requires_confirmation and not self.policy.permission.require_confirmation:
+                    events.append(AgentEvent(AgentEventType.TOOL_STARTED, step.tool, {"confirmation": "bypassed"}))
+                    result = await self.tools.execute(step.tool, step.arguments)
+                elif spec.requires_confirmation:
+                    result = ToolResult(step.tool, None, False, "Tool requires user confirmation")
+                    events.append(AgentEvent(AgentEventType.ERROR, result.error or "Confirmation required"))
                 elif any(not self.policy.allowed(cap) for cap in spec.capabilities):
                     result = ToolResult(step.tool, None, False, "Tool blocked by permission policy")
                 else:
                     events.append(AgentEvent(AgentEventType.TOOL_STARTED, step.tool))
-                    result = await self.tools.execute(step.tool, {})
+                    result = await self.tools.execute(step.tool, step.arguments)
                     events.append(AgentEvent(AgentEventType.TOOL_FINISHED, step.tool, {"success": result.success}))
             events.append(AgentEvent(AgentEventType.STEP_FINISHED, step.objective, {"success": result.success if result else True}))
             executed.append(ExecutionStep(step=step, result=result, events=tuple(events)))

@@ -24,6 +24,6 @@ def build_providers() -> list:
     return providers
 
 
-def build_orchestrator() -> AgentOrchestrator:
-    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool()])
+def build_orchestrator(session=None) -> AgentOrchestrator:
+    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool(session)])
     return AgentOrchestrator(ModelRouter(build_providers()), tools)

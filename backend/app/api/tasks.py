@@ -37,7 +37,8 @@ async def run_task(request: TaskRequest, user: User = Depends(get_current_user),
             raise HTTPException(status_code=404, detail="Conversation not found")
         messages = [ChatMessage(role=item.role, content=item.content) for item in conversation.messages]
     messages.append(ChatMessage(role="user", content=request.goal))
-    result = await orchestrator.run(request.goal, messages, request.model)
+    request_orchestrator = build_orchestrator(session)
+    result = await request_orchestrator.run(request.goal, messages, request.model, project_id=conversation.project_id if request.conversation_id else None)
     events = [event for step in (result.trace.steps if result.trace else []) for event in step.events]
     if request.conversation_id:
         conversation = await get_conversation(session, request.conversation_id, user.id)

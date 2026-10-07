@@ -19,7 +19,11 @@ class OpenAICompatibleProvider(ModelProvider):
             ModelInfo(
                 id=self.default_model,
                 provider=self.provider_name,
-                capabilities=("chat", "reasoning"),
+                capabilities=("chat", "reasoning", "coding"),
+                    context_window=32768,
+                    supports_tools=True,
+                    supports_vision=True,
+                    supports_streaming=True,
             )
         ]
 

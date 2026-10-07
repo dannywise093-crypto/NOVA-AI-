@@ -15,7 +15,7 @@ class ResearchBundle:
 
 
 class ResearchEngine:
-    def __init__(self, provider: SearchProvider) -> None:
+    def __init__(self, provider: SearchProvider, reader: SourceReader | None = None) -> None:
         self.provider = provider
         self.reader = reader or SourceReader()
 

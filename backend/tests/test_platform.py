@@ -147,3 +147,12 @@ def test_knowledge_search_query_terms_are_normalized():
 
     query = "NOVA-AI, research!"
     assert set(re.findall(r"[a-z0-9_]+", query.lower())) == {"nova", "ai", "research"}
+
+
+def test_query_expansion_is_bounded_and_deterministic():
+    from app.knowledge.query_expansion import expand_query
+    first = expand_query("How does NOVA route coding tasks?")
+    second = expand_query("How does NOVA route coding tasks?")
+    assert first == second
+    assert 1 <= len(first) <= 4
+    assert first[0] == "How does NOVA route coding tasks?"

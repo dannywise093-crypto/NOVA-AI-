@@ -92,7 +92,8 @@ async def get_artifact_content(
         "name": artifact.name,
         "mime_type": artifact.mime_type,
         "size_bytes": artifact.size_bytes,
-        "content": content,\n        "document": document if artifact.mime_type not in IMAGE_TYPES else None,
+        "content": content,
+        "document": document if artifact.mime_type not in IMAGE_TYPES else None,
     }
 
 @router.get("/artifacts", response_model=list[ProjectArtifact])

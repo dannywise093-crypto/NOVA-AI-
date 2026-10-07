@@ -13,7 +13,7 @@ from app.db.memory_repository import search_memories
 from app.db.artifact_repository import list_artifacts
 from app.artifacts.storage import build_artifact_storage
 from app.knowledge.extract import extract_text
-from app.db.project_repository import get_project
+from app.db.project_repository import get_project, list_projects
 from app.db.session import get_session
 from app.events import AgentEventType
 from app.models.task import Task
@@ -63,7 +63,7 @@ async def event_stream(
             )
         )
 
-    allowed_projects = {project.id for project in await __import__("app.db.project_repository", fromlist=["list_projects"]).list_projects(session, user.id)}
+    allowed_projects = {project.id for project in await list_projects(session, user.id)}
     allowed_artifacts = {
         artifact.id: artifact
         for artifact in await list_artifacts(session, allowed_projects)

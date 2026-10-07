@@ -3,6 +3,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.artifacts.base import ProjectArtifact
+from app.core.config import settings
 from app.artifacts.storage import build_artifact_storage
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
@@ -13,12 +14,12 @@ from app.db.session import get_session
 from app.knowledge.ingest import DocumentIngestor
 from app.knowledge.extract import extract_text
 from app.knowledge.vector import InMemoryVectorStore
-from app.knowledge.embeddings import HashEmbeddingProvider
+from app.knowledge.embeddings import build_embedding_provider
 
 router = APIRouter(tags=["artifacts"])
 ingestor = DocumentIngestor()
 vector_store = InMemoryVectorStore()
-embedding_provider = HashEmbeddingProvider()
+embedding_provider = build_embedding_provider(settings.embedding_base_url or settings.model_base_url, settings.embedding_api_key or settings.model_api_key, settings.embedding_model)
 storage = build_artifact_storage()
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024

@@ -14,6 +14,7 @@ class ToolSpec:
 class ToolCall:
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    id: str | None = None
 
 
 @dataclass(frozen=True)

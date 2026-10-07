@@ -57,13 +57,15 @@ class DurableTaskWorker:
                 task = await claim_task(session, task_id, self.lease_seconds)
                 if task is None:
                     return
-                await update_task(session, task, progress=max(task.progress, 10))
-                owner_id = task.owner_id
                 goal = task.goal
+                await update_task(session, task, progress=max(task.progress, 10))
 
             async with SessionFactory() as session:
-                task = await claim_task(session, task_id, self.lease_seconds)
-                if task is None:
+                task = await session.get(
+                    __import__("app.db.task_repository", fromlist=["AgentTaskRow"]).AgentTaskRow,
+                    task_id,
+                )
+                if task is None or task.status == TaskStatus.CANCELLED:
                     return
                 orchestrator = build_orchestrator(session)
                 result = await orchestrator.run(goal, [ChatMessage(role="user", content=goal)])
@@ -75,7 +77,10 @@ class DurableTaskWorker:
                 await session.commit()
         except Exception as exc:
             async with SessionFactory() as session:
-                task = await session.get(__import__("app.db.task_repository", fromlist=["AgentTaskRow"]).AgentTaskRow, task_id)
+                task = await session.get(
+                    __import__("app.db.task_repository", fromlist=["AgentTaskRow"]).AgentTaskRow,
+                    task_id,
+                )
                 if task is not None and task.status != TaskStatus.CANCELLED:
                     task.status = TaskStatus.QUEUED if task.attempts < 3 else TaskStatus.FAILED
                     task.error = str(exc)[:4000]

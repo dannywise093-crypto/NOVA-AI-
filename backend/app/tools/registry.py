@@ -1,5 +1,5 @@
+from typing import Any
 from app.models.tool import Tool, ToolResult, ToolSpec
-
 
 class ToolRegistry:
     def __init__(self, tools: list[Tool] | None = None) -> None:
@@ -12,6 +12,20 @@ class ToolRegistry:
 
     def specs(self) -> list[ToolSpec]:
         return [tool.spec for tool in self._tools.values()]
+
+    def schemas(self) -> list[dict[str, Any]]:
+        return [{
+            "type": "function",
+            "function": {
+                "name": spec.name,
+                "description": spec.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"arguments": {"type": "object"}},
+                    "additionalProperties": True,
+                },
+            },
+        } for spec in self.specs()]
 
     async def execute(self, name: str, arguments: dict) -> ToolResult:
         tool = self._tools.get(name)

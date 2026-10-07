@@ -26,7 +26,7 @@ async def replace_chunks(
     session: AsyncSession,
     project_id: str,
     artifact_id: str,
-    chunks: list[tuple[str, int, str, list[float] | None]],
+    chunks: list[tuple[str, int, str, list[float] | None, int | None]],
 ) -> None:
     rows = (await session.scalars(
         select(KnowledgeChunkRow).where(KnowledgeChunkRow.artifact_id == artifact_id)
@@ -34,7 +34,7 @@ async def replace_chunks(
     for row in rows:
         await session.delete(row)
     now = datetime.now()
-    for chunk_id, index, text, embedding in chunks:
+    for chunk_id, index, text, embedding, source_page in chunks:
         session.add(KnowledgeChunkRow(
             id=chunk_id,
             project_id=project_id,
@@ -112,6 +112,6 @@ async def search_chunks(
             text=row.text,
             source=KnowledgeSource(id=row.artifact_id, title=row.artifact_id, source_type="artifact"),
             score=float(score(row)),
-            metadata={"project_id": project_id, "chunk_index": str(row.chunk_index)},
+            metadata={"project_id": project_id, "chunk_index": str(row.chunk_index), "source_page": str(row.source_page) if row.source_page is not None else ""},
         ))
     return result

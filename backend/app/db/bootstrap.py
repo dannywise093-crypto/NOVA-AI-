@@ -1,5 +1,6 @@
 from app.db.models import Base
 from app.db.session import engine
+from app.db.knowledge_repository import KnowledgeChunkRow
 
 
 async def create_schema() -> None:

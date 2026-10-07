@@ -110,14 +110,42 @@ async def claim_task(session: AsyncSession, task_id: str, lease_seconds: int = 6
 
 
 async def heartbeat_task(session: AsyncSession, task_id: str, lease_seconds: int = 60) -> bool:
+    # heartbeat_at is the immutable claim token. A stale worker therefore
+    # cannot accidentally renew or complete a task after it is reclaimed.
     task = await session.scalar(select(AgentTaskRow).where(
         AgentTaskRow.id == task_id, AgentTaskRow.status == TaskStatus.RUNNING
     ))
     if task is None:
         return False
     now = datetime.now(timezone.utc)
-    task.heartbeat_at = now
     task.lease_until = now + timedelta(seconds=lease_seconds)
     task.updated_at = now
     await session.commit()
     return True
+
+
+async def complete_task(
+    session: AsyncSession,
+    task_id: str,
+    claim_token: datetime,
+    *,
+    result: str,
+) -> bool:
+    now = datetime.now(timezone.utc)
+    updated = await session.execute(
+        update(AgentTaskRow)
+        .where(
+            AgentTaskRow.id == task_id,
+            AgentTaskRow.status == TaskStatus.RUNNING,
+            AgentTaskRow.heartbeat_at == claim_token,
+        )
+        .values(
+            status=TaskStatus.COMPLETED,
+            progress=100,
+            result=result,
+            lease_until=None,
+            updated_at=now,
+        )
+    )
+    await session.commit()
+    return updated.rowcount == 1

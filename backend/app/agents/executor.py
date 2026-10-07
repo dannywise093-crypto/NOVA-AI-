@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from app.events import AgentEvent, AgentEventType
-from app.models.task import AgentPlan, PlanStep
+from app.models.task import AgentPlan, PlanStep\nfrom app.models.tool import ToolCall, ToolResult
 from app.models.tool import ToolResult
 from app.tools.permissions import PermissionPolicy
 from app.tools.registry import ToolRegistry
@@ -25,6 +25,16 @@ class AgentExecutor:
         self.tools = tools
         self.max_steps = max_steps
         self.policy = policy or PermissionPolicy()
+
+    async def execute_tool_call(self, call: ToolCall) -> ToolResult:
+        spec = next((s for s in self.tools.specs() if s.name == call.name), None)
+        if spec is None:
+            return ToolResult(call.name, None, False, "Tool is not registered")
+        if spec.requires_confirmation:
+            return ToolResult(call.name, None, False, "Tool requires user confirmation")
+        if any(not self.policy.allowed(cap) for cap in spec.capabilities):
+            return ToolResult(call.name, None, False, "Tool blocked by permission policy")
+        return await self.tools.execute(call.name, call.arguments)
 
     async def execute(self, plan: AgentPlan) -> ExecutionTrace:
         executed: list[ExecutionStep] = []

@@ -1,10 +1,13 @@
 from app.models.task import AgentPlan, Capability, PlanStep, Task
+from app.reasoning.engine import ReasoningEngine
 
 
 class TaskPlanner:
     """Deterministic baseline planner; model-driven planning can replace this later."""
 
     def plan(self, task: Task) -> AgentPlan:
+        return ReasoningEngine().build_plan(task)
+
         steps: list[PlanStep] = []
         if Capability.RESEARCH in task.capabilities:
             steps.append(PlanStep("research", "Gather and compare relevant evidence", Capability.RESEARCH, "web.search"))

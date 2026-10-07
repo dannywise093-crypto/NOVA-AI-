@@ -1,6 +1,5 @@
 from app.auth.models import User
 
-
 class UserStore:
     def __init__(self) -> None:
         self._users: dict[str, User] = {}

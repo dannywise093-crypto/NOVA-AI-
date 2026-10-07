@@ -140,7 +140,7 @@ class MainActivity : AppCompatActivity() {
     private fun field(hintText: String, value: String?): EditText = EditText(this).apply {
         hint = hintText
         setText(value ?: "")
-        singleLine = true
+        isSingleLine = true
         setTextColor(Color.WHITE)
         setHintTextColor(Color.GRAY)
     }

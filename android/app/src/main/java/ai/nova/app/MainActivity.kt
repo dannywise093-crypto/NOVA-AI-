@@ -22,6 +22,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var messages: LinearLayout
     private lateinit var sendButton: Button
     private lateinit var authButton: Button
+    private lateinit var modelSpinner: Spinner
     private val history = mutableListOf<JSONObject>()
 
     override fun onCreate(savedInstanceState: Bundle?) {

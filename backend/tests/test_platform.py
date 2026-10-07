@@ -102,3 +102,18 @@ def test_memory_engine_extracts_explicit_preferences_and_blocks_secrets():
 def test_memory_engine_deduplicates_similar_text():
     engine = MemoryEngine()
     assert engine._similar("preference: Python backend", "preference: Python backend work")
+
+
+from app.research.reader import Evidence
+from app.research.synthesis import EvidenceSynthesizer
+
+
+def test_evidence_synthesizer_ranks_relevant_sources_and_extracts_claims():
+    evidence = [
+        Evidence("https://example.com", "AI", "NOVA AI uses research and reasoning tools.", 200, "text/html"),
+        Evidence("https://example.edu", "Other", "A completely unrelated topic.", 200, "text/html"),
+    ]
+    result = EvidenceSynthesizer().synthesize("NOVA AI research", evidence)
+    assert result.evidence[0].uri == "https://example.com"
+    assert result.claims
+    assert result.claims[0].evidence_uris == ("https://example.com",)

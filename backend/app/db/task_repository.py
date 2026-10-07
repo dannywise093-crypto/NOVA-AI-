@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import StrEnum
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,7 @@ class AgentTaskRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 async def create_task(session: AsyncSession, task: AgentTaskRow) -> AgentTaskRow:
@@ -90,8 +91,23 @@ async def claim_task(session: AsyncSession, task_id: str, lease_seconds: int = 6
         return None
     task.status = TaskStatus.RUNNING
     task.attempts += 1
-    task.lease_until = now + __import__("datetime").timedelta(seconds=lease_seconds)
+    task.lease_until = now + timedelta(seconds=lease_seconds)
+    task.heartbeat_at = now
     task.updated_at = now
     await session.commit()
     await session.refresh(task)
     return task
+
+
+async def heartbeat_task(session: AsyncSession, task_id: str, lease_seconds: int = 60) -> bool:
+    task = await session.scalar(select(AgentTaskRow).where(
+        AgentTaskRow.id == task_id, AgentTaskRow.status == TaskStatus.RUNNING
+    ))
+    if task is None:
+        return False
+    now = datetime.now(timezone.utc)
+    task.heartbeat_at = now
+    task.lease_until = now + timedelta(seconds=lease_seconds)
+    task.updated_at = now
+    await session.commit()
+    return True

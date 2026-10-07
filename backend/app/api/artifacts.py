@@ -13,10 +13,12 @@ from app.db.session import get_session
 from app.knowledge.ingest import DocumentIngestor
 from app.knowledge.extract import extract_text
 from app.knowledge.vector import InMemoryVectorStore
+from app.knowledge.embeddings import HashEmbeddingProvider
 
 router = APIRouter(tags=["artifacts"])
 ingestor = DocumentIngestor()
 vector_store = InMemoryVectorStore()
+embedding_provider = HashEmbeddingProvider()
 storage = build_artifact_storage()
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -57,7 +59,8 @@ async def upload_artifact(
             raise HTTPException(status_code=415, detail=str(exc)) from exc
     chunks = ingestor.chunk(artifact_id, text)
     await vector_store.upsert(chunks)
-    await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text) for chunk in chunks])
+    embeddings = [await embedding_provider.embed(chunk.text) for chunk in chunks]
+    await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text, embedding) for chunk, embedding in zip(chunks, embeddings)])
     return artifact
 
 @router.get("/artifacts/{artifact_id}/content")

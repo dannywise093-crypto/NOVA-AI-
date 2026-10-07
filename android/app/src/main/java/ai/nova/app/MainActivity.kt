@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
         val composer = LinearLayout(this).apply {
             gravity = Gravity.BOTTOM
             addView(message, LinearLayout.LayoutParams(0, -2, 1f))
-            attachButton = Button(this@MainActivity).apply { text = "＋ File" }
+            attachButton = Button(this@MainActivity).apply { text = "＋ File"; isEnabled = false }
             addView(attachButton, LinearLayout.LayoutParams(-2, -2))
             addView(sendButton, LinearLayout.LayoutParams(-2, -2))
         }
@@ -360,6 +360,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun ensureProjectSync(base: String): String {
+        projectId?.let { return it }
+        val result = request("GET", "$base/api/projects", auth = authHeader())
+        if (result.code == 401) throw IllegalStateException("Session expired")
+        if (result.code !in 200..299) throw IllegalStateException("Could not load NOVA workspace")
+        val projects = JSONArray(result.body)
+        if (projects.length() > 0) {
+            return projects.getJSONObject(0).optString("id").also { projectId = it }
+        }
+        val id = UUID.randomUUID().toString()
+        val created = request(
+            "POST", "$base/api/projects",
+            JSONObject().put("id", id).put("name", "NOVA Workspace")
+                .put("description", "Default workspace for NOVA conversations and files"),
+            authHeader()
+        )
+        if (created.code !in 200..299) throw IllegalStateException("Could not create NOVA workspace")
+        projectId = id
+        return id
+    }
+
     private fun uploadAttachment(uri: Uri) {
         if (streaming) return
         status.text = "Uploading file..."
@@ -367,7 +388,7 @@ class MainActivity : AppCompatActivity() {
         thread {
             try {
                 val base = prefs.getString("api", "")?.trimEnd('/') ?: throw IllegalStateException("API URL missing")
-                val project = projectId ?: throw IllegalStateException("NOVA workspace is still loading")
+                val project = ensureProjectSync(base)
                 val resolver = contentResolver
                 val name = queryFileName(uri) ?: "upload"
                 val mime = resolver.getType(uri) ?: "application/octet-stream"

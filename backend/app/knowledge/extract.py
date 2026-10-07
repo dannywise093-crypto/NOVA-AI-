@@ -2,7 +2,21 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path\nfrom typing import Any
+
+
+def extract_document(data: bytes, filename: str, mime_type: str) -> dict[str, Any]:
+    suffix = Path(filename).suffix.lower()
+    if mime_type == "application/pdf" or suffix == ".pdf":
+        try:
+            from pypdf import PdfReader
+            import io
+            reader = PdfReader(io.BytesIO(data))
+            pages = [{"page": i + 1, "text": page.extract_text() or ""} for i, page in enumerate(reader.pages)]
+            return {"kind": "pdf", "pages": pages, "page_count": len(pages), "text": "\n\n".join(p["text"] for p in pages)}
+        except Exception as exc:
+            raise ValueError("Unable to extract text from PDF") from exc
+    return {"kind": "text", "pages": [{"page": 1, "text": extract_text(data, filename, mime_type)}], "page_count": 1, "text": extract_text(data, filename, mime_type)}
 
 
 def extract_text(data: bytes, filename: str, mime_type: str) -> str:

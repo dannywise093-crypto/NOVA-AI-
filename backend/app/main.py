@@ -6,6 +6,8 @@ from app.api.projects import router as projects_router
 from app.api.tasks import router as tasks_router
 from app.api.knowledge import router as knowledge_router
 from app.api.stream import router as stream_router
+from app.api.research import router as research_router
+from app.api.events import router as events_router
 
 app = FastAPI(
     title="NOVA AI API",
@@ -20,6 +22,8 @@ app.include_router(projects_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(knowledge_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
+app.include_router(research_router, prefix="/api")
+app.include_router(events_router, prefix="/api")
 
 
 @app.get("/")

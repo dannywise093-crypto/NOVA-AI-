@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.knowledge_repository import search_chunks
+from app.knowledge.embeddings import EmbeddingProvider
 from app.knowledge.query_expansion import expand_query
 from app.models.tool import ToolResult, ToolSpec
 
@@ -19,9 +20,10 @@ class WebSearchTool:
         return ToolResult(tool=self.spec.name, output={"status": "not_configured", "query": arguments.get("query", "")}, success=False, error="Web search provider not configured")
 
 class KnowledgeRetrieveTool:
-    def __init__(self, session: AsyncSession | None = None, query_expander=None) -> None:
+    def __init__(self, session: AsyncSession | None = None, query_expander=None, embedding_provider: EmbeddingProvider | None = None) -> None:
         self.session = session
         self.query_expander = query_expander
+        self.embedding_provider = embedding_provider
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec("knowledge.retrieve", "Retrieve relevant indexed project knowledge", ("knowledge",))
@@ -42,7 +44,7 @@ class KnowledgeRetrieveTool:
         for expanded_query in queries:
             items = await search_chunks(
                 self.session, project_id, expanded_query,
-                min(limit, 8), artifact_id=artifact_id,
+                min(limit, 8), artifact_id=artifact_id, embedding_provider=self.embedding_provider,
             )
             for item in items:
                 current = merged.get(item.id)

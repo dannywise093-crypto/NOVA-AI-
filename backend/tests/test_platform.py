@@ -34,3 +34,22 @@ async def test_tool_registry_rejects_unknown_tool():
     result = await ToolRegistry().execute("missing", {})
     assert result.success is False
     assert result.error == "Unknown tool"
+
+
+from app.knowledge.ingest import DocumentIngestor
+from app.knowledge.vector import InMemoryVectorStore
+
+
+def test_document_ingestor_chunks_text():
+    chunks = DocumentIngestor().chunk("doc-1", "a" * 250, chunk_size=100)
+    assert len(chunks) == 3
+    assert chunks[0].document_id == "doc-1"
+
+
+@pytest.mark.asyncio
+async def test_vector_store_returns_relevant_chunk():
+    store = InMemoryVectorStore()
+    await store.upsert(DocumentIngestor().chunk("doc-2", "NOVA research platform architecture", chunk_size=100))
+    results = await store.search("NOVA architecture")
+    assert results
+    assert "architecture" in results[0].text

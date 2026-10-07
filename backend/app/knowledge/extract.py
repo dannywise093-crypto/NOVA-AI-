@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path\nfrom typing import Any
+import io
+from pathlib import Path
+from typing import Any
 
 
 def extract_document(data: bytes, filename: str, mime_type: str) -> dict[str, Any]:
@@ -10,13 +12,28 @@ def extract_document(data: bytes, filename: str, mime_type: str) -> dict[str, An
     if mime_type == "application/pdf" or suffix == ".pdf":
         try:
             from pypdf import PdfReader
-            import io
+
             reader = PdfReader(io.BytesIO(data))
-            pages = [{"page": i + 1, "text": page.extract_text() or ""} for i, page in enumerate(reader.pages)]
-            return {"kind": "pdf", "pages": pages, "page_count": len(pages), "text": "\n\n".join(p["text"] for p in pages)}
+            pages = [
+                {"page": i + 1, "text": page.extract_text() or ""}
+                for i, page in enumerate(reader.pages)
+            ]
+            return {
+                "kind": "pdf",
+                "pages": pages,
+                "page_count": len(pages),
+                "text": "\n\n".join(page["text"] for page in pages),
+            }
         except Exception as exc:
             raise ValueError("Unable to extract text from PDF") from exc
-    return {"kind": "text", "pages": [{"page": 1, "text": extract_text(data, filename, mime_type)}], "page_count": 1, "text": extract_text(data, filename, mime_type)}
+
+    text = extract_text(data, filename, mime_type)
+    return {
+        "kind": "text",
+        "pages": [{"page": 1, "text": text}],
+        "page_count": 1,
+        "text": text,
+    }
 
 
 def extract_text(data: bytes, filename: str, mime_type: str) -> str:
@@ -29,20 +46,21 @@ def extract_text(data: bytes, filename: str, mime_type: str) -> str:
     if mime_type == "application/pdf" or suffix == ".pdf":
         try:
             from pypdf import PdfReader
-            import io
+
             reader = PdfReader(io.BytesIO(data))
             return "\n\n".join(page.extract_text() or "" for page in reader.pages)
         except Exception as exc:
             raise ValueError("Unable to extract text from PDF") from exc
 
-    if mime_type in {
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    } or suffix == ".docx":
+    if (
+        mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        or suffix == ".docx"
+    ):
         try:
             from docx import Document
-            import io
+
             document = Document(io.BytesIO(data))
-            return "\n\n".join(p.text for p in document.paragraphs)
+            return "\n\n".join(paragraph.text for paragraph in document.paragraphs)
         except Exception as exc:
             raise ValueError("Unable to extract text from DOCX") from exc
 

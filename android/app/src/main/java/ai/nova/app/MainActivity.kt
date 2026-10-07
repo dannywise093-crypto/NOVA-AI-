@@ -1,7 +1,8 @@
 package ai.nova.app
 
+import android.graphics.Color
 import android.os.Bundle
-import android.view.View
+import android.view.Gravity
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONArray
@@ -13,138 +14,179 @@ import kotlin.concurrent.thread
 class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("nova", MODE_PRIVATE) }
     private lateinit var endpoint: EditText
-    private lateinit var status: TextView
     private lateinit var email: EditText
     private lateinit var password: EditText
     private lateinit var message: EditText
-    private lateinit var output: TextView
-    private lateinit var authButton: Button
+    private lateinit var status: TextView
+    private lateinit var messages: LinearLayout
     private lateinit var sendButton: Button
+    private lateinit var authButton: Button
     private val history = mutableListOf<JSONObject>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildUi()
-        if (prefs.getString("token", null) != null) showAuthenticated()
+        if (prefs.getString("token", null) != null) showChat()
     }
 
     private fun buildUi() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 28, 28, 24)
+            setBackgroundColor(Color.rgb(15, 15, 18))
+            setPadding(20, 20, 20, 16)
         }
-        val title = TextView(this).apply { text = "NOVA AI"; textSize = 30f }
-        status = TextView(this).apply { text = "Not signed in"; textSize = 14f }
-        endpoint = EditText(this).apply {
-            hint = "API base URL"
-            setText(prefs.getString("api", "http://10.0.2.2:8000"))
-            singleLine = true
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
         }
-        email = EditText(this).apply {
-            hint = "Email"
-            inputType = 33
-            setText(prefs.getString("email", ""))
-            singleLine = true
+        val title = TextView(this).apply {
+            text = "NOVA"
+            textSize = 28f
+            setTextColor(Color.WHITE)
         }
-        password = EditText(this).apply {
-            hint = "Password (8+ characters)"
-            inputType = 129
-            singleLine = true
+        status = TextView(this).apply {
+            text = "Offline"
+            textSize = 13f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.END
         }
-        authButton = Button(this).apply { text = "Sign In / Create Account" }
-        message = EditText(this).apply { hint = "Message NOVA"; minLines = 2; isEnabled = false }
-        sendButton = Button(this).apply { text = "Send"; isEnabled = false }
-        output = TextView(this).apply { text = "Connect to your NOVA backend to begin."; textSize = 16f }
+        header.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(status)
 
-        root.addView(title)
-        root.addView(status)
+        endpoint = field("API base URL", prefs.getString("api", "http://10.0.2.2:8000"))
+        email = field("Email", prefs.getString("email", ""))
+        password = field("Password", "")
+        password.inputType = 129
+        authButton = Button(this).apply { text = "Sign In / Create Account" }
+
+        messages = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply { addView(messages) }
+
+        message = EditText(this).apply {
+            hint = "Message NOVA..."
+            minLines = 2
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            setBackgroundColor(Color.rgb(30, 30, 35))
+            isEnabled = false
+        }
+        sendButton = Button(this).apply {
+            text = "Send"
+            isEnabled = false
+        }
+        val composer = LinearLayout(this).apply {
+            gravity = Gravity.BOTTOM
+            addView(message, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(sendButton, LinearLayout.LayoutParams(-2, -2))
+        }
+
+        root.addView(header)
         root.addView(endpoint)
         root.addView(email)
         root.addView(password)
         root.addView(authButton)
-        root.addView(message)
-        root.addView(sendButton)
-        root.addView(output)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(composer)
         setContentView(root)
 
         authButton.setOnClickListener { authenticate() }
         sendButton.setOnClickListener { sendMessage() }
     }
 
-    private fun baseUrl(): String = endpoint.text.toString().trim().trimEnd('/')
+    private fun field(hintText: String, value: String?): EditText = EditText(this).apply {
+        hint = hintText
+        setText(value ?: "")
+        singleLine = true
+        setTextColor(Color.WHITE)
+        setHintTextColor(Color.GRAY)
+    }
+
+    private fun bubble(text: String, user: Boolean) {
+        val view = TextView(this).apply {
+            this.text = text
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(18, 14, 18, 14)
+            setBackgroundColor(if (user) Color.rgb(45, 45, 55) else Color.rgb(28, 42, 36))
+        }
+        val params = LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(0, 8, 0, 8)
+        }
+        messages.addView(view, params)
+    }
 
     private fun authenticate() {
-        val base = baseUrl()
+        val base = endpoint.text.toString().trim().trimEnd('/')
         val userEmail = email.text.toString().trim()
         val userPassword = password.text.toString()
         if (base.isBlank() || userEmail.isBlank() || userPassword.length < 8) {
-            status.text = "Enter API URL, email, and an 8+ character password."
+            status.text = "Enter URL, email and 8+ character password"
             return
         }
         prefs.edit().putString("api", base).putString("email", userEmail).apply()
-        setBusy(true)
+        authButton.isEnabled = false
         status.text = "Signing in..."
         thread {
-            val result = requestJson("POST", "$base/api/auth/login",
+            val login = request("POST", "$base/api/auth/login",
                 JSONObject().put("email", userEmail).put("password", userPassword))
-            if (result.code == 401 || result.code == 404) {
-                val registration = requestJson("POST", "$base/api/auth/register",
+            if (login.code == 401 || login.code == 404) {
+                val register = request("POST", "$base/api/auth/register",
                     JSONObject().put("email", userEmail).put("password", userPassword))
-                if (registration.code in 200..299) {
-                    handleLogin(requestJson("POST", "$base/api/auth/login",
+                if (register.code in 200..299) {
+                    finishLogin(request("POST", "$base/api/auth/login",
                         JSONObject().put("email", userEmail).put("password", userPassword)))
-                } else {
-                    runOnUiThread { showError("Account creation failed: " + registration.body) }
-                }
-            } else {
-                handleLogin(result)
-            }
+                } else runOnUiThread { authError("Account creation failed: " + register.body) }
+            } else finishLogin(login)
         }
     }
 
-    private fun handleLogin(result: HttpResult) {
+    private fun finishLogin(result: HttpResult) {
         if (result.code !in 200..299) {
-            runOnUiThread { showError("Authentication failed: " + result.body) }
+            runOnUiThread { authError("Authentication failed: " + result.body) }
             return
         }
         try {
             val token = JSONObject(result.body).getString("access_token")
             prefs.edit().putString("token", token).apply()
-            runOnUiThread { showAuthenticated() }
+            runOnUiThread { showChat() }
         } catch (e: Exception) {
-            runOnUiThread { showError("Invalid login response: " + e.message) }
+            runOnUiThread { authError("Invalid login response") }
         }
     }
 
-    private fun showAuthenticated() {
-        status.text = "Signed in • NOVA ready"
-        password.visibility = View.GONE
-        authButton.text = "Signed In"
-        authButton.isEnabled = false
+    private fun showChat() {
+        endpoint.visibility = EditText.GONE
+        email.visibility = EditText.GONE
+        password.visibility = EditText.GONE
+        authButton.visibility = Button.GONE
         message.isEnabled = true
         sendButton.isEnabled = true
-        output.text = "Ask NOVA anything."
+        status.text = "● Ready"
+        if (messages.childCount == 0) bubble("I'm NOVA. Ask me anything.", false)
     }
 
     private fun sendMessage() {
         val text = message.text.toString().trim()
+        val token = prefs.getString("token", null) ?: return
         if (text.isBlank()) return
-        val token = prefs.getString("token", null)
-        if (token == null) {
-            status.text = "Please sign in first."
-            return
-        }
-
         val historyArray = JSONArray()
         history.forEach { historyArray.put(it) }
-        val payload = JSONObject().put("message", text).put("history", historyArray)
 
+        bubble(text, true)
         message.text.clear()
-        output.text = "NOVA is thinking..."
         sendButton.isEnabled = false
+        status.text = "Thinking..."
+        val placeholder = TextView(this).apply {
+            text = "NOVA is thinking..."
+            setTextColor(Color.LTGRAY)
+            textSize = 15f
+            setPadding(18, 14, 18, 14)
+        }
+        messages.addView(placeholder)
 
         thread {
-            val result = requestJson("POST", baseUrl() + "/api/chat", payload, "Bearer " + token)
+            val result = request("POST", prefs.getString("api", "")!!.trimEnd('/') + "/api/chat",
+                JSONObject().put("message", text).put("history", historyArray),
+                "Bearer $token")
             if (result.code in 200..299) {
                 try {
                     val json = JSONObject(result.body)
@@ -152,62 +194,49 @@ class MainActivity : AppCompatActivity() {
                     history.add(JSONObject().put("role", "user").put("content", text))
                     history.add(JSONObject().put("role", "assistant").put("content", answer))
                     runOnUiThread {
-                        output.text = answer
+                        messages.removeView(placeholder)
+                        bubble(answer, false)
                         sendButton.isEnabled = true
+                        status.text = "● Ready"
                     }
                 } catch (e: Exception) {
-                    runOnUiThread { showError("Invalid NOVA response: " + e.message) }
+                    runOnUiThread { messages.removeView(placeholder); authError("Invalid response") }
                 }
             } else if (result.code == 401) {
                 prefs.edit().remove("token").apply()
-                runOnUiThread {
-                    status.text = "Session expired. Sign in again."
-                    sendButton.isEnabled = true
-                }
+                runOnUiThread { messages.removeView(placeholder); status.text = "Session expired"; sendButton.isEnabled = false }
             } else {
-                runOnUiThread { showError("Chat failed (" + result.code + "): " + result.body) }
+                runOnUiThread { messages.removeView(placeholder); authError("Chat failed: " + result.body) }
             }
         }
     }
 
-    private fun requestJson(
-        method: String,
-        url: String,
-        body: JSONObject? = null,
-        authorization: String? = null
-    ): HttpResult {
+    private fun authError(text: String) {
+        status.text = text
+        authButton.isEnabled = true
+    }
+
+    private fun request(method: String, url: String, body: JSONObject? = null, auth: String? = null): HttpResult {
         return try {
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 60_000
-            connection.requestMethod = method
-            connection.setRequestProperty("Accept", "application/json")
-            if (authorization != null) connection.setRequestProperty("Authorization", authorization)
+            val c = URL(url).openConnection() as HttpURLConnection
+            c.connectTimeout = 10_000
+            c.readTimeout = 60_000
+            c.requestMethod = method
+            c.setRequestProperty("Accept", "application/json")
+            if (auth != null) c.setRequestProperty("Authorization", auth)
             if (body != null) {
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json")
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/json")
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             }
-            val code = connection.responseCode
-            val stream = if (code >= 400) connection.errorStream else connection.inputStream
+            val code = c.responseCode
+            val stream = if (code >= 400) c.errorStream else c.inputStream
             val response = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            connection.disconnect()
+            c.disconnect()
             HttpResult(code, response)
         } catch (e: Exception) {
             HttpResult(-1, "ERROR: " + e.message)
         }
-    }
-
-    private fun showError(messageText: String) {
-        status.text = messageText
-        output.text = messageText
-        sendButton.isEnabled = prefs.getString("token", null) != null
-        setBusy(false)
-    }
-
-    private fun setBusy(busy: Boolean) {
-        authButton.isEnabled = !busy
-        sendButton.isEnabled = !busy && prefs.getString("token", null) != null
     }
 
     data class HttpResult(val code: Int, val body: String)

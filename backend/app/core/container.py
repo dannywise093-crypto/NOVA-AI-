@@ -4,6 +4,7 @@ from app.providers.mock import MockProvider
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.router import ModelRouter
 from app.tools.registry import ToolRegistry
+from app.tools.builtin import CurrentTimeTool, KnowledgeRetrieveTool, WebSearchTool
 
 
 def build_providers() -> list:
@@ -24,4 +25,5 @@ def build_providers() -> list:
 
 
 def build_orchestrator() -> AgentOrchestrator:
-    return AgentOrchestrator(ModelRouter(build_providers()), ToolRegistry())
+    tools = ToolRegistry([CurrentTimeTool(), WebSearchTool(), KnowledgeRetrieveTool()])
+    return AgentOrchestrator(ModelRouter(build_providers()), tools)

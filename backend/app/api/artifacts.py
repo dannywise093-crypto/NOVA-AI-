@@ -12,7 +12,7 @@ from app.db.project_repository import get_project, list_projects
 from app.db.knowledge_repository import replace_chunks
 from app.db.session import get_session
 from app.knowledge.ingest import DocumentIngestor
-from app.knowledge.extract import extract_text
+from app.knowledge.extract import extract_text, extract_document
 from app.knowledge.vector import InMemoryVectorStore
 from app.knowledge.embeddings import build_embedding_provider
 
@@ -82,7 +82,8 @@ async def get_artifact_content(
         content = f"data:{artifact.mime_type};base64,{base64.b64encode(data).decode()}"
     else:
         try:
-            content = extract_text(data, artifact.name, artifact.mime_type)
+            document = extract_document(data, artifact.name, artifact.mime_type)
+            content = document["text"]
         except ValueError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
     return {
@@ -91,7 +92,7 @@ async def get_artifact_content(
         "name": artifact.name,
         "mime_type": artifact.mime_type,
         "size_bytes": artifact.size_bytes,
-        "content": content,
+        "content": content,\n        "document": document if artifact.mime_type not in IMAGE_TYPES else None,
     }
 
 @router.get("/artifacts", response_model=list[ProjectArtifact])

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
 from app.events import AgentEvent, AgentEventType
-from app.models.task import AgentPlan, PlanStep\nfrom app.models.tool import ToolCall, ToolResult
-from app.models.tool import ToolResult
+from app.models.task import AgentPlan, PlanStep
+from app.models.tool import ToolCall, ToolResult
 from app.tools.permissions import PermissionPolicy
 from app.tools.registry import ToolRegistry
 

@@ -10,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
@@ -23,6 +24,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sendButton: Button
     private lateinit var authButton: Button
     private lateinit var modelSpinner: Spinner
+    private lateinit var conversationSpinner: Spinner
+    private lateinit var newChatButton: Button
+    private val conversations = mutableListOf<JSONObject>()
+    private var conversationId: String? = null
+    private var loadingConversation = false
     private val history = mutableListOf<JSONObject>()
     private var streaming = false
 
@@ -58,6 +64,12 @@ class MainActivity : AppCompatActivity() {
         password = field("Password", "")
         password.inputType = 129
         authButton = Button(this).apply { text = "Sign In / Create Account" }
+        val chatBar = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        conversationSpinner = Spinner(this)
+        newChatButton = Button(this).apply { text = "New Chat" }
+        chatBar.addView(conversationSpinner, LinearLayout.LayoutParams(0, -2, 1f))
+        chatBar.addView(newChatButton, LinearLayout.LayoutParams(-2, -2))
+
         modelSpinner = Spinner(this)
 
         messages = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -86,6 +98,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(email)
         root.addView(password)
         root.addView(authButton)
+        root.addView(chatBar)
         root.addView(modelSpinner)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(composer)
@@ -93,6 +106,15 @@ class MainActivity : AppCompatActivity() {
 
         authButton.setOnClickListener { authenticate() }
         sendButton.setOnClickListener { sendMessage() }
+        newChatButton.setOnClickListener { newChat() }
+        conversationSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (!loadingConversation && position in conversations.indices) {
+                    openConversation(conversations[position].optString("id"))
+                }
+            }
+        }
     }
 
     private fun field(hintText: String, value: String?): EditText = EditText(this).apply {
@@ -162,9 +184,11 @@ class MainActivity : AppCompatActivity() {
         authButton.visibility = View.GONE
         message.isEnabled = true
         sendButton.isEnabled = true
+        newChatButton.isEnabled = true
         status.text = "● Ready"
         modelSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, arrayOf("Auto"))
         loadModels()
+        loadConversations()
         if (messages.childCount == 0) bubble("I'm NOVA. Ask me anything.", false)
     }
 
@@ -190,6 +214,121 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun loadConversations() {
+        val base = prefs.getString("api", "")?.trimEnd('/') ?: return
+        thread {
+            val result = request("GET", "$base/api/conversations", auth = authHeader())
+            if (result.code == 401) {
+                expireSession()
+                return@thread
+            }
+            if (result.code in 200..299) {
+                try {
+                    val array = JSONArray(result.body)
+                    val loaded = mutableListOf<JSONObject>()
+                    for (i in 0 until array.length()) loaded.add(array.getJSONObject(i))
+                    runOnUiThread {
+                        conversations.clear()
+                        conversations.addAll(loaded)
+                        loadingConversation = true
+                        conversationSpinner.adapter = ArrayAdapter(
+                            this, android.R.layout.simple_spinner_dropdown_item,
+                            conversations.map { it.optString("title", "Chat") }
+                        )
+                        loadingConversation = false
+                        if (conversations.isNotEmpty()) openConversation(conversations[0].optString("id"))
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun newChat() {
+        if (streaming) return
+        conversationId = null
+        history.clear()
+        messages.removeAllViews()
+        bubble("New conversation. Ask NOVA anything.", false)
+        status.text = "● New chat"
+    }
+
+    private fun openConversation(id: String) {
+        if (id.isBlank() || streaming) return
+        val base = prefs.getString("api", "")?.trimEnd('/') ?: return
+        status.text = "Loading chat..."
+        thread {
+            val result = request("GET", "$base/api/conversations/$id", auth = authHeader())
+            if (result.code == 401) {
+                expireSession()
+                return@thread
+            }
+            if (result.code !in 200..299) {
+                runOnUiThread { status.text = "Could not load chat" }
+                return@thread
+            }
+            try {
+                val conversation = JSONObject(result.body)
+                val restored = mutableListOf<JSONObject>()
+                val msgs = conversation.optJSONArray("messages") ?: JSONArray()
+                for (i in 0 until msgs.length()) {
+                    val item = msgs.getJSONObject(i)
+                    val role = item.optString("role")
+                    val content = item.optString("content")
+                    if ((role == "user" || role == "assistant") && content.isNotBlank()) {
+                        restored.add(JSONObject().put("role", role).put("content", content))
+                    }
+                }
+                runOnUiThread {
+                    conversationId = conversation.optString("id")
+                    history.clear()
+                    history.addAll(restored)
+                    messages.removeAllViews()
+                    if (restored.isEmpty()) bubble("Empty conversation. Ask NOVA anything.", false)
+                    restored.forEach { bubble(it.optString("content"), it.optString("role") == "user") }
+                    status.text = "● Ready"
+                }
+            } catch (_: Exception) {
+                runOnUiThread { status.text = "Invalid conversation" }
+            }
+        }
+    }
+
+    private fun ensureConversation(userText: String): String? {
+        conversationId?.let { return it }
+        val base = prefs.getString("api", "")?.trimEnd('/') ?: return null
+        val id = UUID.randomUUID().toString()
+        val result = request(
+            "POST", "$base/api/conversations",
+            JSONObject().put("id", id).put("title", userText.take(60).ifBlank { "New chat" }),
+            authHeader()
+        )
+        if (result.code !in 200..299) return null
+        conversationId = id
+        return id
+    }
+
+    private fun saveMessage(conversation: String, role: String, content: String) {
+        val base = prefs.getString("api", "")?.trimEnd('/') ?: return
+        request(
+            "POST", "$base/api/conversations/$conversation/messages",
+            JSONObject().put("id", UUID.randomUUID().toString()).put("role", role).put("content", content),
+            authHeader()
+        )
+    }
+
+    private fun authHeader(): String = "Bearer " + prefs.getString("token", "")
+
+    private fun expireSession() {
+        prefs.edit().remove("token").apply()
+        runOnUiThread {
+            status.text = "Session expired"
+            sendButton.isEnabled = false
+            newChatButton.isEnabled = false
+            authButton.visibility = View.VISIBLE
+            authButton.isEnabled = true
+        }
+    }
+
     private fun sendMessage() {
         val text = message.text.toString().trim()
         val token = prefs.getString("token", null) ?: return
@@ -202,6 +341,7 @@ class MainActivity : AppCompatActivity() {
         bubble(text, true)
         message.text.clear()
         sendButton.isEnabled = false
+        newChatButton.isEnabled = false
         status.text = "Thinking..."
 
         val assistant = bubble("NOVA is thinking...", false)
@@ -217,7 +357,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         thread {
-            streamChat(payload, token, assistant, answer, text)
+            val id = ensureConversation(text)
+            if (id == null) {
+                runOnUiThread {
+                    assistant.text = "Could not create conversation."
+                    status.text = "Conversation error"
+                    streaming = false
+                    sendButton.isEnabled = true
+                    newChatButton.isEnabled = true
+                }
+                return@thread
+            }
+            streamChat(payload, token, assistant, answer, text, id)
         }
     }
 
@@ -226,7 +377,8 @@ class MainActivity : AppCompatActivity() {
         token: String,
         assistant: TextView,
         answer: StringBuilder,
-        userText: String
+        userText: String,
+        conversation: String
     ) {
         var connection: HttpURLConnection? = null
         var finalContent: String? = null
@@ -327,6 +479,10 @@ class MainActivity : AppCompatActivity() {
                 val finalAnswer = answer.toString().ifBlank { finalContent ?: "No response." }
                 history.add(JSONObject().put("role", "user").put("content", userText))
                 history.add(JSONObject().put("role", "assistant").put("content", finalAnswer))
+                thread {
+                    saveMessage(conversation, "user", userText)
+                    saveMessage(conversation, "assistant", finalAnswer)
+                }
                 runOnUiThread {
                     assistant.setText(finalAnswer)
                     assistant.setTextColor(Color.WHITE)
@@ -344,6 +500,7 @@ class MainActivity : AppCompatActivity() {
             connection?.disconnect()
             runOnUiThread {
                 streaming = false
+                newChatButton.isEnabled = true
                 if (!failed && prefs.getString("token", null) != null) {
                     sendButton.isEnabled = true
                 }

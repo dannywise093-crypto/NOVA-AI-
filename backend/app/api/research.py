@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -9,6 +9,8 @@ from app.research.search import UnconfiguredSearchProvider
 from app.research.model_synthesis import ModelResearchSynthesizer
 from app.core.container import build_providers
 from app.router import ModelRouter
+from app.auth.dependencies import get_current_user
+from app.auth.models import User
 
 router = APIRouter(tags=["research"])
 
@@ -25,7 +27,7 @@ class ResearchRequest(BaseModel):
 
 
 @router.post("/research/search")
-async def research_search(request: ResearchRequest) -> dict[str, object]:
+async def research_search(request: ResearchRequest, current_user: User = Depends(get_current_user)) -> dict[str, object]:
     engine = ResearchEngine(provider)
     bundle = await engine.gather(request.query, rounds=2, limit_per_round=request.limit)
     synthesis = EvidenceSynthesizer().synthesize(request.query, list(bundle.evidence))

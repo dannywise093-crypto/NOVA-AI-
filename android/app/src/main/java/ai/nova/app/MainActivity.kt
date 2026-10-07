@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var authButton: Button
     private lateinit var modelSpinner: Spinner
     private val history = mutableListOf<JSONObject>()
+    private var streaming = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -165,13 +166,33 @@ class MainActivity : AppCompatActivity() {
         message.isEnabled = true
         sendButton.isEnabled = true
         status.text = "● Ready"
+        loadModels()
         modelSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, arrayOf("Auto"))
         if (messages.childCount == 0) bubble("I'm NOVA. Ask me anything.", false)
+    }
+
+    private fun loadModels() {
+        val base = prefs.getString("api", "")?.trimEnd('/') ?: return
+        thread {
+            val result = request("GET", "$base/api/models")
+            if (result.code in 200..299) {
+                try {
+                    val a = JSONArray(result.body)
+                    val names = mutableListOf<String>()
+                    for (i in 0 until a.length()) names.add(a.getJSONObject(i).optString("id"))
+                    runOnUiThread {
+                        modelSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names.distinct())
+                    }
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     private fun sendMessage() {
         val text = message.text.toString().trim()
         val token = prefs.getString("token", null) ?: return
+        if (streaming) return
+        streaming = true
         if (text.isBlank()) return
         val historyArray = JSONArray()
         history.forEach { historyArray.put(it) }
@@ -190,7 +211,7 @@ class MainActivity : AppCompatActivity() {
 
         thread {
             val result = request("POST", prefs.getString("api", "")!!.trimEnd('/') + "/api/chat",
-                JSONObject().put("message", text).put("history", historyArray),
+                JSONObject().put("message", text).put("history", historyArray).put("model", modelSpinner.selectedItem?.toString()),
                 "Bearer $token")
             if (result.code in 200..299) {
                 try {
@@ -202,16 +223,17 @@ class MainActivity : AppCompatActivity() {
                         messages.removeView(placeholder)
                         bubble(answer, false)
                         sendButton.isEnabled = true
+                        streaming = false
                         status.text = "● Ready"
                     }
                 } catch (e: Exception) {
-                    runOnUiThread { messages.removeView(placeholder); authError("Invalid response") }
+                    runOnUiThread { messages.removeView(placeholder); streaming = false; authError("Invalid response") }
                 }
             } else if (result.code == 401) {
                 prefs.edit().remove("token").apply()
-                runOnUiThread { messages.removeView(placeholder); status.text = "Session expired"; sendButton.isEnabled = false }
+                runOnUiThread { messages.removeView(placeholder); streaming = false; status.text = "Session expired"; sendButton.isEnabled = false }
             } else {
-                runOnUiThread { messages.removeView(placeholder); authError("Chat failed: " + result.body) }
+                runOnUiThread { messages.removeView(placeholder); streaming = false; authError("Chat failed: " + result.body) }
             }
         }
     }

@@ -74,3 +74,15 @@ async def test_model_can_request_registered_tool():
         "Use a tool to answer this", [ChatMessage(role="user", content="What time is it?")]
     )
     assert result.response.content == "Tool result received"
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_stream_events_preserve_fragmented_tool_call():
+    from app.providers.openai_compatible import OpenAICompatibleProvider
+
+    provider = OpenAICompatibleProvider("http://example.test/v1", "key", "test-model")
+    events = [
+        {"type": "tool_call_delta", "index": 0, "id": "call_1", "name": "code.sandbox", "arguments": '{"code":'},
+        {"type": "tool_call_delta", "index": 0, "id": "call_1", "name": None, "arguments": '"print(1)"}'},
+    ]
+    assert events[0]["id"] == events[1]["id"] == "call_1"

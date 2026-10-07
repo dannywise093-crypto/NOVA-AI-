@@ -28,6 +28,7 @@ class PlanStep:
     objective: str
     capability: Capability = Capability.REASONING
     tool: str | None = None
+    arguments: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

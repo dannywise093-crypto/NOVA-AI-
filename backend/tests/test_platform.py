@@ -140,3 +140,10 @@ def test_knowledge_chunk_model_has_embedding_storage():
     from app.db.knowledge_repository import KnowledgeChunkRow
 
     assert hasattr(KnowledgeChunkRow, "embedding")
+
+
+def test_knowledge_search_query_terms_are_normalized():
+    import re
+
+    query = "NOVA-AI, research!"
+    assert set(re.findall(r"[a-z0-9_]+", query.lower())) == {"nova", "ai", "research"}

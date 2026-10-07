@@ -59,3 +59,15 @@ class ArtifactRow(Base):
     size_bytes: Mapped[int] = mapped_column()
     storage_key: Mapped[str] = mapped_column(String(1024))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class MemoryRow(Base):
+    __tablename__ = "memories"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
+    content: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(50), default="fact")
+    importance: Mapped[int] = mapped_column(default=50)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -11,6 +11,7 @@ from app.db.project_repository import get_project, list_projects
 from app.db.knowledge_repository import replace_chunks
 from app.db.session import get_session
 from app.knowledge.ingest import DocumentIngestor
+from app.knowledge.extract import extract_text
 from app.knowledge.vector import InMemoryVectorStore
 
 router = APIRouter(tags=["artifacts"])
@@ -19,8 +20,8 @@ vector_store = InMemoryVectorStore()
 storage = build_artifact_storage()
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-TEXT_TYPES = {"text/plain", "text/markdown", "text/csv", "application/json"}
-TEXT_SUFFIXES = {".txt", ".md", ".csv", ".json", ".py", ".ts", ".tsx", ".js", ".jsx"}
+TEXT_TYPES = {"text/plain", "text/markdown", "text/csv", "application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+TEXT_SUFFIXES = {".txt", ".md", ".csv", ".json", ".py", ".ts", ".tsx", ".js", ".jsx", ".pdf", ".docx"}
 
 @router.post("/artifacts/upload", response_model=ProjectArtifact)
 async def upload_artifact(
@@ -46,7 +47,10 @@ async def upload_artifact(
         id=artifact_id, project_id=project_id, name=filename, mime_type=mime_type,
         size_bytes=len(data), storage_key=storage_key,
     ))
-    text = data.decode("utf-8", errors="replace")
+    try:
+        text = extract_text(data, filename, mime_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
     chunks = ingestor.chunk(artifact_id, text)
     await vector_store.upsert(chunks)
     await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text) for chunk in chunks])

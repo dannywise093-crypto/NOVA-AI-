@@ -5,14 +5,15 @@ from app.api.models import router as models_router
 
 app = FastAPI(
     title="NOVA AI API",
-    version="0.1.0",
-    description="The orchestration backend for NOVA AI.",
+    version="0.2.0",
+    description="The intelligence, agent, tool, knowledge, and integration backend for NOVA AI.",
 )
 
 app.include_router(health_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 
+
 @app.get("/")
 async def root() -> dict[str, str]:
-    return {"name": "NOVA AI", "version": "0.1.0", "status": "online"}
+    return {"name": "NOVA AI", "version": "0.2.0", "status": "online", "platform": "ai"}

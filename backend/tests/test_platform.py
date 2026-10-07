@@ -117,3 +117,9 @@ def test_evidence_synthesizer_ranks_relevant_sources_and_extracts_claims():
     assert result.evidence[0].uri == "https://example.com"
     assert result.claims
     assert result.claims[0].evidence_uris == ("https://example.com",)
+
+
+def test_document_extractor_handles_text_and_image_metadata():
+    from app.knowledge.extract import extract_text
+
+    assert extract_text(b"hello NOVA", "note.txt", "text/plain") == "hello NOVA"

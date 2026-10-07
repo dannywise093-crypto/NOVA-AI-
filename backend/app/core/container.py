@@ -5,6 +5,7 @@ from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.router import ModelRouter
 from app.tools.registry import ToolRegistry
 from app.tools.builtin import CurrentTimeTool, KnowledgeRetrieveTool, WebSearchTool
+from app.tools.code_sandbox import CodeSandboxTool
 
 
 def build_providers() -> list:

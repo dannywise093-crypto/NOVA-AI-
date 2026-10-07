@@ -1,8 +1,10 @@
-from dataclasses import dataclass\n\n_APPROVALS: dict[str, str] = {}
-_APPROVED: dict[str, str] = {}
+from dataclasses import dataclass
 import hashlib
 import json
 import secrets
+
+_APPROVALS: dict[str, str] = {}
+_APPROVED: dict[str, str] = {}
 
 
 @dataclass(frozen=True)
@@ -16,7 +18,9 @@ class ToolPermission:
 class PermissionPolicy:
     def __init__(self, permission: ToolPermission | None = None) -> None:
         self.permission = permission or ToolPermission()
-        # Process-wide one-time approvals let a separate API approval request\n        # authorize the later executor instance created for the same request.\n        self._approvals = _APPROVALS
+        # Process-wide one-time approvals let a separate API approval request
+        # authorize the later executor instance created for the same request.
+        self._approvals = _APPROVALS
 
     def allowed(self, capability: str) -> bool:
         mapping = {

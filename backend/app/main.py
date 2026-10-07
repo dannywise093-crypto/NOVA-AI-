@@ -14,6 +14,7 @@ from app.api.conversations_db import router as conversations_router
 from app.api.artifacts import router as artifacts_router
 from app.api.auth_db import router as auth_router
 from app.api.memory import router as memory_router
+from app.api.agent_tasks import router as agent_tasks_router
 
 app = FastAPI(
     title="NOVA AI API",
@@ -34,6 +35,7 @@ app.include_router(conversations_router, prefix="/api")
 app.include_router(artifacts_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(agent_tasks_router, prefix="/api")
 
 @app.on_event("startup")
 async def startup() -> None:

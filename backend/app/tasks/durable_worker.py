@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from app.core.container import build_orchestrator
 from app.db.session import SessionFactory
-from app.db.task_repository import TaskStatus, claim_task, recoverable_tasks, update_task
+from app.db.task_repository import TaskStatus, claim_task, recoverable_tasks, update_task, heartbeat_task
 from app.models.types import ChatMessage
 
 
@@ -68,7 +68,13 @@ class DurableTaskWorker:
                 if task is None or task.status == TaskStatus.CANCELLED:
                     return
                 orchestrator = build_orchestrator(session)
-                result = await orchestrator.run(goal, [ChatMessage(role="user", content=goal)])
+                heartbeat = asyncio.create_task(self._heartbeat(task_id), name=f"nova-heartbeat-{task_id}")
+                try:
+                    result = await orchestrator.run(goal, [ChatMessage(role="user", content=goal)])
+                finally:
+                    heartbeat.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await heartbeat
                 await update_task(
                     session, task, status=TaskStatus.COMPLETED,
                     progress=100, result=result.response.content,
@@ -89,6 +95,14 @@ class DurableTaskWorker:
                     await session.commit()
         finally:
             self._running.discard(task_id)
+
+    async def _heartbeat(self, task_id: str) -> None:
+        interval = max(5.0, self.lease_seconds / 3)
+        while True:
+            await asyncio.sleep(interval)
+            async with SessionFactory() as session:
+                if not await heartbeat_task(session, task_id, self.lease_seconds):
+                    return
 
 
 durable_task_worker = DurableTaskWorker()

@@ -2,6 +2,7 @@ package ai.nova.app
 
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
@@ -26,15 +27,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var progress: TextView
     private lateinit var messages: LinearLayout
-    private lateinit var sendButton: Button
-    private lateinit var attachButton: Button
+    private lateinit var sendButton: TextView
+    private lateinit var attachButton: TextView
     private val attachments = mutableListOf<JSONObject>()
     private var projectId: String? = null
     private val filePickerCode = 7001
     private lateinit var authButton: Button
     private lateinit var modelSpinner: Spinner
     private lateinit var conversationSpinner: Spinner
-    private lateinit var newChatButton: Button
+    private lateinit var newChatButton: TextView
     private val conversations = mutableListOf<JSONObject>()
     private var conversationId: String? = null
     private var loadingConversation = false
@@ -43,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var loginPanel: LinearLayout
     private lateinit var chatPanel: LinearLayout
     private lateinit var authStatus: TextView
+    private lateinit var serverPanel: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -301,6 +303,41 @@ class MainActivity : AppCompatActivity() {
         }
         messages.addView(row, LinearLayout.LayoutParams(-1, -2))
         return view
+    }
+
+    private fun showHistoryDrawer() {
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(22), dp(18), dp(18))
+            setBackgroundColor(Color.rgb(16, 18, 24))
+        }
+        panel.addView(uiText("Your chats", 22f).apply {
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+        val newChat = uiButton("+ New chat", true)
+        panel.addView(newChat, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(12) })
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        conversations.forEach { item ->
+            val row = uiText(item.optString("title", "Chat"), 15f).apply {
+                setPadding(dp(14), 0, dp(14), 0)
+                gravity = Gravity.CENTER_VERTICAL
+                background = card(Color.rgb(25, 27, 34), 12)
+                isClickable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    openConversation(item.optString("id"))
+                }
+            }
+            list.addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(6) })
+        }
+        panel.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        newChat.setOnClickListener { dialog.dismiss(); newChat() }
+        dialog.setContentView(panel)
+        dialog.window?.setBackgroundDrawable(card(Color.rgb(16, 18, 24), 22))
+        dialog.show()
+        dialog.window?.setLayout(dp(330), -1)
+        dialog.window?.setGravity(Gravity.START or Gravity.CENTER_VERTICAL)
     }
 
     private fun authenticate() {

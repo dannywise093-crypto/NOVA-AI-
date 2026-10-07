@@ -52,7 +52,20 @@ async def chat(request: ChatRequest, user: User = Depends(get_current_user), ses
     messages = [*request.history]
     if memory_context:
         messages.append(ChatMessage(role="system", content=memory_context))
-    messages.append(ChatMessage(role="user", content=request.message))
+    parts = tuple(
+        ContentPart(
+            type=str(item.get("type") or "file"),
+            uri=str(item["uri"]),
+            mime_type=item.get("mime_type"),
+        )
+        for item in request.attachments
+        if item.get("uri")
+    )
+    messages.append(ChatMessage(
+        role="user",
+        content=request.message,
+        parts=parts,
+    ))
     result = await build_orchestrator(session).run(
         task=request.message,
         messages=messages,

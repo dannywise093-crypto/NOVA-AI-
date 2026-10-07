@@ -3,11 +3,13 @@ from dataclasses import dataclass
 from app.models.base import ModelInfo
 from app.providers.base import ModelProvider
 
+
 @dataclass(frozen=True)
 class ModelChoice:
     model: str
     provider: ModelProvider
     reason: str
+
 
 class ModelRouter:
     def __init__(self, providers: list[ModelProvider]) -> None:
@@ -20,26 +22,45 @@ class ModelRouter:
             for model in provider.list_models()
         ]
 
-    def choose(self, task: str, preferred_model: str | None = None) -> ModelChoice:
+    def rank(self, task: str, preferred_model: str | None = None) -> list[ModelChoice]:
         models = self.available_models()
+        if not models:
+            raise RuntimeError("No AI models are configured.")
+
+        choices: list[ModelChoice] = []
         if preferred_model:
             for provider in self.providers:
                 if provider.supports(preferred_model):
-                    return ModelChoice(preferred_model, provider, "explicit model preference")
+                    choices.append(
+                        ModelChoice(
+                            preferred_model,
+                            provider,
+                            "explicit model preference",
+                        )
+                    )
+                    break
 
         normalized = task.lower()
-        wanted_capability = "reasoning" if any(
+        wanted = "reasoning" if any(
             word in normalized for word in ("reason", "analyze", "complex", "debug", "plan")
         ) else "chat"
 
         for model in models:
-            if wanted_capability in model.capabilities:
+            if model.id == preferred_model:
+                continue
+            if wanted in model.capabilities:
                 provider = next(p for p in self.providers if p.supports(model.id))
-                return ModelChoice(model.id, provider, f"matched capability: {wanted_capability}")
+                choices.append(
+                    ModelChoice(model.id, provider, f"matched capability: {wanted}")
+                )
 
-        if not models:
-            raise RuntimeError("No AI models are configured.")
+        for model in models:
+            if model.id in {choice.model for choice in choices}:
+                continue
+            provider = next(p for p in self.providers if p.supports(model.id))
+            choices.append(ModelChoice(model.id, provider, "default fallback"))
 
-        model = models[0]
-        provider = next(p for p in self.providers if p.supports(model.id))
-        return ModelChoice(model.id, provider, "default fallback")
+        return choices
+
+    def choose(self, task: str, preferred_model: str | None = None) -> ModelChoice:
+        return self.rank(task, preferred_model)[0]

@@ -21,6 +21,7 @@ storage = build_artifact_storage()
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 TEXT_TYPES = {"text/plain", "text/markdown", "text/csv", "application/json", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 TEXT_SUFFIXES = {".txt", ".md", ".csv", ".json", ".py", ".ts", ".tsx", ".js", ".jsx", ".pdf", ".docx"}
 
 @router.post("/artifacts/upload", response_model=ProjectArtifact)
@@ -36,8 +37,8 @@ async def upload_artifact(
     filename = Path(file.filename or "upload").name
     suffix = Path(filename).suffix.lower()
     mime_type = file.content_type or "application/octet-stream"
-    if mime_type not in TEXT_TYPES and suffix not in TEXT_SUFFIXES:
-        raise HTTPException(status_code=415, detail="Only text-based documents are supported in this foundation release")
+    if mime_type not in TEXT_TYPES and mime_type not in IMAGE_TYPES and suffix not in TEXT_SUFFIXES and suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+        raise HTTPException(status_code=415, detail="Unsupported artifact format")
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds the 10 MB upload limit")
@@ -47,10 +48,13 @@ async def upload_artifact(
         id=artifact_id, project_id=project_id, name=filename, mime_type=mime_type,
         size_bytes=len(data), storage_key=storage_key,
     ))
-    try:
-        text = extract_text(data, filename, mime_type)
-    except ValueError as exc:
-        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    if mime_type in IMAGE_TYPES:
+        text = f"Image artifact: {filename} ({mime_type}, {len(data)} bytes). Visual understanding is delegated to a vision-capable model."
+    else:
+        try:
+            text = extract_text(data, filename, mime_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
     chunks = ingestor.chunk(artifact_id, text)
     await vector_store.upsert(chunks)
     await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text) for chunk in chunks])

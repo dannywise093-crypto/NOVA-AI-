@@ -50,6 +50,7 @@ class AgentOrchestrator:
         project_id: str | None = None,
     ) -> AgentResult:
         capabilities = self.infer_capabilities(task)
+        plan = self.planner.plan(Task(goal=task, capabilities=capabilities, metadata={"project_id": project_id} if project_id else {}))
         context = list(messages)
         tools = tuple(self.executor.tools.schemas())
         failures: list[str] = []
@@ -65,6 +66,8 @@ class AgentOrchestrator:
                     metadata={
                         "capabilities": [c.value for c in capabilities],
                         "project_id": project_id,
+                        "plan": [step.objective for step in plan.steps],
+                        "plan_tools": [step.tool for step in plan.steps if step.tool],
                     },
                     tools=tools if model_info and model_info.supports_tools else (),
                 )
@@ -72,7 +75,7 @@ class AgentOrchestrator:
                     response = await choice.provider.chat(choice.model, request)
                     if not response.tool_calls:
                         verification = self.verifier.verify(response.content, expected_goal=task)
-                        reason = choice.reason
+                        reason = f"{choice.reason}; plan={len(plan.steps)} steps"
                         if failures:
                             reason = f"{reason}; recovered after {len(failures)} provider failure(s)"
                         return AgentResult(response, reason, None, verification)

@@ -6,6 +6,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.db.session import get_session
 from app.db.project_repository import get_project
+from app.db.memory_repository import search_memories
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.types import ChatMessage
 
@@ -41,7 +42,16 @@ class ChatResponse(BaseModel):
 async def chat(request: ChatRequest, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> ChatResponse:
     if request.project_id is not None and await get_project(session, request.project_id, user.id) is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    messages = [*request.history, ChatMessage(role="user", content=request.message)]
+    memories = await search_memories(session, user.id, request.message, project_id=request.project_id, limit=6)
+    memory_context = ""
+    if memories:
+        memory_context = "Relevant NOVA memories (use only when helpful):\\n" + "\\n".join(
+            f"- {memory.content}" for memory in memories
+        )
+    messages = [*request.history]
+    if memory_context:
+        messages.append(ChatMessage(role="system", content=memory_context))
+    messages.append(ChatMessage(role="user", content=request.message))
     result = await build_orchestrator(session).run(
         task=request.message,
         messages=messages,
@@ -53,7 +63,7 @@ async def chat(request: ChatRequest, user: User = Depends(get_current_user), ses
         model=result.response.model,
         provider=result.response.provider,
         routing_reason=result.model_reason,
-        capabilities=[cap.value for cap in orchestrator.infer_capabilities(request.message)],
+        capabilities=[cap.value for cap in build_orchestrator(session).infer_capabilities(request.message)],
         verification={
             "passed": result.verification.passed if result.verification else False,
             "score": result.verification.score if result.verification else 0.0,

@@ -8,6 +8,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.db.artifact_repository import create_artifact, list_artifacts
 from app.db.project_repository import get_project, list_projects
+from app.db.knowledge_repository import replace_chunks
 from app.db.session import get_session
 from app.knowledge.ingest import DocumentIngestor
 from app.knowledge.vector import InMemoryVectorStore
@@ -46,7 +47,9 @@ async def upload_artifact(
         size_bytes=len(data), storage_key=storage_key,
     ))
     text = data.decode("utf-8", errors="replace")
-    await vector_store.upsert(ingestor.chunk(artifact_id, text))
+    chunks = ingestor.chunk(artifact_id, text)
+    await vector_store.upsert(chunks)
+    await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text) for chunk in chunks])
     return artifact
 
 @router.get("/artifacts", response_model=list[ProjectArtifact])

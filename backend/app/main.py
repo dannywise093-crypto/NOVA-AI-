@@ -15,6 +15,7 @@ from app.api.artifacts import router as artifacts_router
 from app.api.auth_db import router as auth_router
 from app.api.memory import router as memory_router
 from app.api.agent_tasks import router as agent_tasks_router
+from app.tasks.durable_worker import durable_task_worker
 
 app = FastAPI(
     title="NOVA AI API",
@@ -42,6 +43,11 @@ async def startup() -> None:
     if settings.environment == "development":
         from app.db.bootstrap import create_schema
         await create_schema()
+    await durable_task_worker.start()
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await durable_task_worker.stop()
 
 
 @app.get("/")

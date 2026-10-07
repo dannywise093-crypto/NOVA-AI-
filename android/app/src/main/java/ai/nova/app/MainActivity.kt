@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         password = field("Password", "")
         password.inputType = 129
         authButton = Button(this).apply { text = "Sign In / Create Account" }
+        modelSpinner = Spinner(this)
 
         messages = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply { addView(messages) }
@@ -86,6 +87,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(email)
         root.addView(password)
         root.addView(authButton)
+        root.addView(modelSpinner)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(composer)
         setContentView(root)
@@ -163,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         message.isEnabled = true
         sendButton.isEnabled = true
         status.text = "● Ready"
+        modelSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, arrayOf("Auto"))
         if (messages.childCount == 0) bubble("I'm NOVA. Ask me anything.", false)
     }
 

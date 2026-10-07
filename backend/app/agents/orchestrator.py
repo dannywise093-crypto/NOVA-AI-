@@ -51,7 +51,24 @@ class AgentOrchestrator:
         capabilities = self.infer_capabilities(task)
         plan = self.planner.plan(Task(goal=task, capabilities=capabilities, metadata={"project_id": project_id} if project_id else {}))
         trace = await self.executor.execute(plan)
-        request = ModelRequest(messages=tuple(messages), metadata={"capabilities": [c.value for c in capabilities]})
+        context_messages = list(messages)
+        tool_context: list[str] = []
+        for step in trace.steps:
+            if step.result is None:
+                continue
+            if step.result.success:
+                tool_context.append(f"[Tool result: {step.step.tool}]\\n{step.result.output}")
+            elif step.result.error:
+                tool_context.append(f"[Tool error: {step.step.tool}]\\n{step.result.error}")
+        if tool_context:
+            context_messages.append(ChatMessage(
+                role="system",
+                content="The following are trusted NOVA tool results. Use them as context; do not claim to have used a tool that did not return successfully.\\n\\n" + "\\n\\n".join(tool_context),
+            ))
+        request = ModelRequest(
+            messages=tuple(context_messages),
+            metadata={"capabilities": [c.value for c in capabilities], "project_id": project_id},
+        )
         failures: list[str] = []
         for choice in self.router.rank(task, preferred_model):
             try:

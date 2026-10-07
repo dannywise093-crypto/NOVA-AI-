@@ -53,3 +53,11 @@ async def test_vector_store_returns_relevant_chunk():
     results = await store.search("NOVA architecture")
     assert results
     assert "architecture" in results[0].text
+
+
+from app.tools.permissions import PermissionPolicy, ToolPermission
+
+
+def test_permission_policy_blocks_network_by_default():
+    assert PermissionPolicy().allowed("network") is False
+    assert PermissionPolicy(ToolPermission(allow_network=True)).allowed("network") is True

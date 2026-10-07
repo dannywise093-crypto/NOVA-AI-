@@ -1,4 +1,5 @@
 from dataclasses import dataclass\n\n_APPROVALS: dict[str, str] = {}
+_APPROVED: dict[str, str] = {}
 import hashlib
 import json
 import secrets
@@ -41,4 +42,10 @@ class PermissionPolicy:
         if self._approvals.get(key) != token:
             return False
         del self._approvals[key]
+        _APPROVED[key] = token
         return True
+
+    def consume_approval(self, tool_name: str, arguments: dict) -> bool:
+        key = self.approval_key(tool_name, arguments)
+        token = _APPROVED.pop(key, None)
+        return token is not None

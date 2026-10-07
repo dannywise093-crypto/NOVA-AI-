@@ -76,12 +76,22 @@ async def get_artifact_content(
     artifact = next((item for item in artifacts if item.id == artifact_id), None)
     if artifact is None:
         raise HTTPException(status_code=404, detail="Artifact not found")
+    data = await storage.get(artifact.storage_key)
+    import base64
+    if artifact.mime_type in IMAGE_TYPES:
+        content = f"data:{artifact.mime_type};base64,{base64.b64encode(data).decode()}"
+    else:
+        try:
+            content = extract_text(data, artifact.name, artifact.mime_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
     return {
         "artifact_id": artifact.id,
         "project_id": artifact.project_id,
         "name": artifact.name,
         "mime_type": artifact.mime_type,
-        "storage_key": artifact.storage_key,
+        "size_bytes": artifact.size_bytes,
+        "content": content,
     }
 
 @router.get("/artifacts", response_model=list[ProjectArtifact])

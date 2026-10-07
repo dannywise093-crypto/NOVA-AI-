@@ -52,6 +52,26 @@ async def upload_artifact(
     await replace_chunks(session, project_id, artifact_id, [(chunk.id, chunk.index, chunk.text) for chunk in chunks])
     return artifact
 
+@router.get("/artifacts/{artifact_id}/content")
+async def get_artifact_content(
+    artifact_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    projects = await list_projects(session, user.id)
+    allowed = {item.id for item in projects}
+    artifacts = await list_artifacts(session, allowed)
+    artifact = next((item for item in artifacts if item.id == artifact_id), None)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return {
+        "artifact_id": artifact.id,
+        "project_id": artifact.project_id,
+        "name": artifact.name,
+        "mime_type": artifact.mime_type,
+        "storage_key": artifact.storage_key,
+    }
+
 @router.get("/artifacts", response_model=list[ProjectArtifact])
 async def list_artifacts_endpoint(
     project_id: str | None = None,

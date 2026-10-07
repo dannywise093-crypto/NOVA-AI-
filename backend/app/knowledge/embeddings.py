@@ -28,3 +28,34 @@ class HashEmbeddingProvider(EmbeddingProvider):
             vector[index] += 1.0
         norm = math.sqrt(sum(value * value for value in vector))
         return [value / norm for value in vector] if norm else vector
+
+
+class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
+    """Embedding provider for OpenAI-compatible /embeddings APIs."""
+
+    def __init__(self, base_url: str, api_key: str, model: str, timeout: float = 30.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+
+    async def embed(self, text: str) -> list[float]:
+        import httpx
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                f"{self.base_url}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                json={"model": self.model, "input": text},
+            )
+            response.raise_for_status()
+            data = response.json()
+        embedding = data.get("data", [{}])[0].get("embedding")
+        if not isinstance(embedding, list) or not embedding:
+            raise ValueError("Embedding provider returned no vector")
+        return [float(value) for value in embedding]
+
+
+def build_embedding_provider(base_url: str, api_key: str, model: str) -> EmbeddingProvider:
+    if api_key and model:
+        return OpenAICompatibleEmbeddingProvider(base_url, api_key, model)
+    return HashEmbeddingProvider()

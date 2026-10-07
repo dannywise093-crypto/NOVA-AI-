@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from app.core.container import build_orchestrator
 from app.db.session import SessionFactory
-from app.db.task_repository import TaskStatus, claim_task, recoverable_tasks, update_task, heartbeat_task
+from app.db.task_repository import AgentTaskRow, TaskStatus, claim_task, recoverable_tasks, update_task, heartbeat_task, complete_task
 from app.models.types import ChatMessage
 
 
@@ -58,13 +58,11 @@ class DurableTaskWorker:
                 if task is None:
                     return
                 goal = task.goal
+                claim_token = task.heartbeat_at
                 await update_task(session, task, progress=max(task.progress, 10))
 
             async with SessionFactory() as session:
-                task = await session.get(
-                    __import__("app.db.task_repository", fromlist=["AgentTaskRow"]).AgentTaskRow,
-                    task_id,
-                )
+                task = await session.get(AgentTaskRow, task_id)
                 if task is None or task.status == TaskStatus.CANCELLED:
                     return
                 orchestrator = build_orchestrator(session)
@@ -75,18 +73,11 @@ class DurableTaskWorker:
                     heartbeat.cancel()
                     with suppress(asyncio.CancelledError):
                         await heartbeat
-                await update_task(
-                    session, task, status=TaskStatus.COMPLETED,
-                    progress=100, result=result.response.content,
-                )
-                task.lease_until = None
-                await session.commit()
+                if claim_token is None or not await complete_task(session, task_id, claim_token, result.response.content):
+                    return
         except Exception as exc:
             async with SessionFactory() as session:
-                task = await session.get(
-                    __import__("app.db.task_repository", fromlist=["AgentTaskRow"]).AgentTaskRow,
-                    task_id,
-                )
+                task = await session.get(AgentTaskRow, task_id)
                 if task is not None and task.status != TaskStatus.CANCELLED:
                     task.status = TaskStatus.QUEUED if task.attempts < 3 else TaskStatus.FAILED
                     task.error = str(exc)[:4000]

@@ -38,9 +38,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(15, 15, 18))
             setPadding(20, 20, 20, 16)
         }
-        val header = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-        }
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val title = TextView(this).apply {
             text = "NOVA"
             textSize = 28f
@@ -105,7 +103,7 @@ class MainActivity : AppCompatActivity() {
         setHintTextColor(Color.GRAY)
     }
 
-    private fun bubble(text: String, user: Boolean) {
+    private fun bubble(text: String, user: Boolean): TextView {
         val view = TextView(this).apply {
             this.text = text
             textSize = 16f
@@ -113,10 +111,9 @@ class MainActivity : AppCompatActivity() {
             setPadding(18, 14, 18, 14)
             setBackgroundColor(if (user) Color.rgb(45, 45, 55) else Color.rgb(28, 42, 36))
         }
-        val params = LinearLayout.LayoutParams(-1, -2).apply {
-            setMargins(0, 8, 0, 8)
-        }
+        val params = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 8, 0, 8) }
         messages.addView(view, params)
+        return view
     }
 
     private fun authenticate() {
@@ -153,7 +150,7 @@ class MainActivity : AppCompatActivity() {
             val token = JSONObject(result.body).getString("access_token")
             prefs.edit().putString("token", token).apply()
             runOnUiThread { showChat() }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             runOnUiThread { authError("Invalid login response") }
         }
     }
@@ -166,8 +163,8 @@ class MainActivity : AppCompatActivity() {
         message.isEnabled = true
         sendButton.isEnabled = true
         status.text = "● Ready"
-        loadModels()
         modelSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, arrayOf("Auto"))
+        loadModels()
         if (messages.childCount == 0) bubble("I'm NOVA. Ask me anything.", false)
     }
 
@@ -178,10 +175,15 @@ class MainActivity : AppCompatActivity() {
             if (result.code in 200..299) {
                 try {
                     val a = JSONArray(result.body)
-                    val names = mutableListOf<String>()
-                    for (i in 0 until a.length()) names.add(a.getJSONObject(i).optString("id"))
+                    val names = mutableListOf("Auto")
+                    for (i in 0 until a.length()) {
+                        val id = a.getJSONObject(i).optString("id")
+                        if (id.isNotBlank()) names.add(id)
+                    }
                     runOnUiThread {
-                        modelSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names.distinct())
+                        modelSpinner.adapter = ArrayAdapter(
+                            this, android.R.layout.simple_spinner_dropdown_item, names.distinct()
+                        )
                     }
                 } catch (_: Exception) {}
             }
@@ -191,9 +193,9 @@ class MainActivity : AppCompatActivity() {
     private fun sendMessage() {
         val text = message.text.toString().trim()
         val token = prefs.getString("token", null) ?: return
-        if (streaming) return
+        if (streaming || text.isBlank()) return
         streaming = true
-        if (text.isBlank()) return
+
         val historyArray = JSONArray()
         history.forEach { historyArray.put(it) }
 
@@ -201,39 +203,150 @@ class MainActivity : AppCompatActivity() {
         message.text.clear()
         sendButton.isEnabled = false
         status.text = "Thinking..."
-        val placeholder = TextView(this).apply {
-            text = "NOVA is thinking..."
-            setTextColor(Color.LTGRAY)
-            textSize = 15f
-            setPadding(18, 14, 18, 14)
+
+        val assistant = bubble("NOVA is thinking...", false)
+        assistant.setTextColor(Color.LTGRAY)
+        val answer = StringBuilder()
+
+        val payload = JSONObject()
+            .put("goal", text)
+            .put("messages", historyArray)
+        val selectedModel = modelSpinner.selectedItem?.toString()?.trim()
+        if (!selectedModel.isNullOrBlank() && selectedModel != "Auto") {
+            payload.put("model", selectedModel)
         }
-        messages.addView(placeholder)
 
         thread {
-            val result = request("POST", prefs.getString("api", "")!!.trimEnd('/') + "/api/chat",
-                JSONObject().put("message", text).put("history", historyArray).put("model", modelSpinner.selectedItem?.toString()),
-                "Bearer $token")
-            if (result.code in 200..299) {
-                try {
-                    val json = JSONObject(result.body)
-                    val answer = json.optString("content", "No response.")
-                    history.add(JSONObject().put("role", "user").put("content", text))
-                    history.add(JSONObject().put("role", "assistant").put("content", answer))
-                    runOnUiThread {
-                        messages.removeView(placeholder)
-                        bubble(answer, false)
-                        sendButton.isEnabled = true
-                        streaming = false
-                        status.text = "● Ready"
-                    }
-                } catch (e: Exception) {
-                    runOnUiThread { messages.removeView(placeholder); streaming = false; authError("Invalid response") }
-                }
-            } else if (result.code == 401) {
+            streamChat(payload, token, assistant, answer, text)
+        }
+    }
+
+    private fun streamChat(
+        payload: JSONObject,
+        token: String,
+        assistant: TextView,
+        answer: StringBuilder,
+        userText: String
+    ) {
+        var connection: HttpURLConnection? = null
+        var finalContent: String? = null
+        var failed = false
+        try {
+            val base = prefs.getString("api", "")!!.trimEnd('/')
+            connection = URL("$base/api/stream").openConnection() as HttpURLConnection
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 120_000
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Accept", "text/event-stream")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.outputStream.use {
+                it.write(payload.toString().toByteArray(Charsets.UTF_8))
+            }
+
+            val code = connection.responseCode
+            if (code == 401) {
+                failed = true
                 prefs.edit().remove("token").apply()
-                runOnUiThread { messages.removeView(placeholder); streaming = false; status.text = "Session expired"; sendButton.isEnabled = false }
-            } else {
-                runOnUiThread { messages.removeView(placeholder); streaming = false; authError("Chat failed: " + result.body) }
+                runOnUiThread {
+                    assistant.text = "Session expired. Please sign in again."
+                    status.text = "Session expired"
+                    sendButton.isEnabled = false
+                }
+                return
+            }
+            if (code !in 200..299) {
+                failed = true
+                val body = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                runOnUiThread {
+                    assistant.text = "Stream failed: $body"
+                    status.text = "Stream error"
+                }
+                return
+            }
+
+            connection.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    if (!line.startsWith("data:")) return@forEach
+                    val raw = line.removePrefix("data:").trim()
+                    if (raw.isBlank()) return@forEach
+                    try {
+                        val event = JSONObject(raw)
+                        when (event.optString("type")) {
+                            "response.delta" -> {
+                                val delta = event.optString("delta")
+                                if (delta.isNotEmpty()) {
+                                    answer.append(delta)
+                                    val visible = answer.toString()
+                                    runOnUiThread {
+                                        assistant.setText(visible)
+                                        assistant.setTextColor(Color.WHITE)
+                                        status.text = "Generating..."
+                                    }
+                                }
+                            }
+                            "model.selected" -> {
+                                val model = event.optString("model")
+                                if (model.isNotBlank()) runOnUiThread {
+                                    status.text = "Using $model"
+                                }
+                            }
+                            "verification" -> {
+                                val verified = event.optBoolean("verified", false)
+                                runOnUiThread {
+                                    status.text = if (verified) "Verified" else "Verifying..."
+                                }
+                            }
+                            "response.final" -> {
+                                val content = event.optString("content")
+                                if (content.isNotBlank()) finalContent = content
+                            }
+                            "error" -> {
+                                failed = true
+                                val error = event.optString("error", "Unknown stream error")
+                                runOnUiThread {
+                                    assistant.text = error
+                                    assistant.setTextColor(Color.rgb(255, 120, 120))
+                                    status.text = "Error"
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Ignore malformed/heartbeat SSE lines.
+                    }
+                }
+            }
+
+            if (finalContent != null && answer.isEmpty()) {
+                answer.append(finalContent)
+                runOnUiThread { assistant.setText(finalContent) }
+            }
+
+            if (!failed) {
+                val finalAnswer = answer.toString().ifBlank { finalContent ?: "No response." }
+                history.add(JSONObject().put("role", "user").put("content", userText))
+                history.add(JSONObject().put("role", "assistant").put("content", finalAnswer))
+                runOnUiThread {
+                    assistant.setText(finalAnswer)
+                    assistant.setTextColor(Color.WHITE)
+                    status.text = "● Ready"
+                }
+            }
+        } catch (e: Exception) {
+            failed = true
+            runOnUiThread {
+                assistant.text = "Connection error: " + (e.message ?: "unknown error")
+                assistant.setTextColor(Color.rgb(255, 120, 120))
+                status.text = "Offline"
+            }
+        } finally {
+            connection?.disconnect()
+            runOnUiThread {
+                streaming = false
+                if (!failed && prefs.getString("token", null) != null) {
+                    sendButton.isEnabled = true
+                }
             }
         }
     }
@@ -243,7 +356,12 @@ class MainActivity : AppCompatActivity() {
         authButton.isEnabled = true
     }
 
-    private fun request(method: String, url: String, body: JSONObject? = null, auth: String? = null): HttpResult {
+    private fun request(
+        method: String,
+        url: String,
+        body: JSONObject? = null,
+        auth: String? = null
+    ): HttpResult {
         return try {
             val c = URL(url).openConnection() as HttpURLConnection
             c.connectTimeout = 10_000

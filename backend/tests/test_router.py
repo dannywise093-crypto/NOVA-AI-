@@ -46,3 +46,31 @@ async def test_orchestrator_falls_back_after_provider_failure():
     result = await agent.run("Say hello", [ChatMessage(role="user", content="fallback works")])
     assert result.response.provider == "mock"
     assert "recovered" in result.model_reason
+
+
+class ToolCallingProvider(MockProvider):
+    def __init__(self, registry):
+        self.registry = registry
+        self.called = False
+
+    async def chat(self, model, request):
+        from app.models.tool import ToolCall
+        if not self.called:
+            self.called = True
+            return __import__("app.models.types", fromlist=["ModelResponse"]).ModelResponse(
+                content="", model=model, provider="mock",
+                tool_calls=(ToolCall("system.time", {}),),
+            )
+        return __import__("app.models.types", fromlist=["ModelResponse"]).ModelResponse(
+            content="Tool result received", model=model, provider="mock",
+        )
+
+@pytest.mark.asyncio
+async def test_model_can_request_registered_tool():
+    from app.tools.builtin import CurrentTimeTool
+    from app.tools.registry import ToolRegistry
+    tool_provider = ToolCallingProvider(ToolRegistry([CurrentTimeTool()]))
+    result = await AgentOrchestrator(ModelRouter([tool_provider]), ToolRegistry([CurrentTimeTool()])).run(
+        "Use a tool to answer this", [ChatMessage(role="user", content="What time is it?")]
+    )
+    assert result.response.content == "Tool result received"

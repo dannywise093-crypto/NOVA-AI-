@@ -12,6 +12,7 @@ class TaskRequest(BaseModel):
     goal: str = Field(min_length=1)
     messages: list[ChatMessage] = Field(default_factory=list)
     model: str | None = None
+    conversation_id: str | None = None
 
 
 class TaskResponse(BaseModel):

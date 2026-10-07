@@ -21,7 +21,7 @@ class ToolRegistry:
                 "description": spec.description,
                 "parameters": {
                     "type": "object",
-                    "properties": {"arguments": {"type": "object"}},
+                    "properties": {},
                     "additionalProperties": True,
                 },
             },

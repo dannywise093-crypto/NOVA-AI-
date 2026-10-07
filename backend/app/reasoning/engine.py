@@ -49,3 +49,12 @@ class ReasoningEngine:
             steps.append(PlanStep("verify", "Check correctness, completeness, and consistency", Capability.REASONING))
 
         return AgentPlan(task.goal, tuple(steps[:profile.max_steps]))
+
+
+    def planning_budget(self, task: Task) -> dict[str, int]:
+        profile = self.profile(task)
+        return {
+            "max_steps": profile.max_steps,
+            "max_tool_calls": max(2, profile.max_steps),
+            "max_replans": 2 if profile.mode == "deep" else 1,
+        }

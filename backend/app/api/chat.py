@@ -14,11 +14,20 @@ class ChatRequest(BaseModel):
     model: str | None = None
 
 
+class PlanStepResponse(BaseModel):
+    id: str
+    objective: str
+    capability: str
+    tool: str | None = None
+
+
 class ChatResponse(BaseModel):
     content: str
     model: str
     provider: str
     routing_reason: str
+    capabilities: list[str]
+    plan: list[PlanStepResponse]
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -34,4 +43,14 @@ async def chat(request: ChatRequest) -> ChatResponse:
         model=result.response.model,
         provider=result.response.provider,
         routing_reason=result.model_reason,
+        capabilities=[cap.value for cap in orchestrator.infer_capabilities(request.message)],
+        plan=[
+            PlanStepResponse(
+                id=step.step.id,
+                objective=step.step.objective,
+                capability=step.step.capability.value,
+                tool=step.step.tool,
+            )
+            for step in (result.trace.steps if result.trace else [])
+        ],
     )

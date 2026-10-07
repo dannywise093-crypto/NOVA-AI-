@@ -30,7 +30,9 @@ class KnowledgeRetrieveTool:
             return ToolResult(self.spec.name, {"items": [], "query": query}, False, "Knowledge database session is not configured")
         if not query or not project_id:
             return ToolResult(self.spec.name, {"items": [], "query": query}, False, "query and project_id are required")
-        items = await search_chunks(self.session, project_id, query, int(arguments.get("limit", 8)))
+        limit = min(max(int(arguments.get("limit", 8)), 1), 20)
+        artifact_id = str(arguments.get("artifact_id", "")).strip() or None
+        items = await search_chunks(self.session, project_id, query, limit, artifact_id=artifact_id)
         return ToolResult(self.spec.name, {
             "query": query,
             "items": [{"id": item.id, "text": item.text, "score": item.score, "source": item.source.id, "metadata": item.metadata} for item in items],

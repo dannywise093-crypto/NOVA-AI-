@@ -4,10 +4,10 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.conversations.base import Conversation, Message
-from app.conversations.store import ConversationStore
+from app.conversations.runtime import conversation_store
 
 router = APIRouter(tags=["conversations"])
-store = ConversationStore()
+store = conversation_store
 
 class ConversationCreate(BaseModel):
     id: str = Field(min_length=1, max_length=100)

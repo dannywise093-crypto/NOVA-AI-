@@ -5,6 +5,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.conversations.base import Conversation, Message
 from app.db.conversation_repository import create_conversation, get_conversation, list_conversations, save_conversation
+from app.db.project_repository import get_project
 from app.db.session import get_session
 
 router = APIRouter(tags=["conversations"])
@@ -21,6 +22,8 @@ class MessageCreate(BaseModel):
 
 @router.post("/conversations", response_model=Conversation)
 async def create(request: ConversationCreate, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> Conversation:
+    if request.project_id is not None and await get_project(session, request.project_id, user.id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     try:
         return await create_conversation(session, Conversation(id=request.id, title=request.title, project_id=request.project_id, owner_id=user.id))
     except ValueError as exc:

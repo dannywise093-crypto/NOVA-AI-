@@ -1,9 +1,10 @@
+import json
+from collections.abc import AsyncIterator
 import httpx
 
 from app.models.base import ModelInfo
 from app.models.types import ModelRequest, ModelResponse
 from app.providers.base import ModelProvider
-
 
 class OpenAICompatibleProvider(ModelProvider):
     """Provider for APIs exposing OpenAI-compatible chat completions."""
@@ -15,52 +16,56 @@ class OpenAICompatibleProvider(ModelProvider):
         self.provider_name = provider_name
 
     def list_models(self) -> list[ModelInfo]:
-        return [
-            ModelInfo(
-                id=self.default_model,
-                provider=self.provider_name,
-                capabilities=("chat", "reasoning", "coding"),
-                    context_window=32768,
-                    supports_tools=True,
-                    supports_vision=True,
-                    supports_streaming=True,
-            )
-        ]
+        return [ModelInfo(
+            id=self.default_model, provider=self.provider_name,
+            capabilities=("chat", "reasoning", "coding"), context_window=32768,
+            supports_tools=True, supports_vision=True, supports_streaming=True,
+        )]
 
-    async def chat(self, model: str, request: ModelRequest) -> ModelResponse:
+    def _payload(self, model: str, request: ModelRequest, stream: bool = False) -> dict:
         payload = {
             "model": model,
-            "messages": [
-                {"role": message.role, "content": message.content}
-                for message in request.messages
-            ],
+            "messages": [{"role": m.role, "content": m.content} for m in request.messages],
             "temperature": request.temperature,
         }
         if request.max_tokens is not None:
             payload["max_tokens"] = request.max_tokens
+        if stream:
+            payload["stream"] = True
+        return payload
 
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+    async def chat(self, model: str, request: ModelRequest) -> ModelResponse:
         async with httpx.AsyncClient(timeout=90.0) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
+            response = await client.post(f"{self.base_url}/chat/completions", headers=self._headers(), json=self._payload(model, request))
             response.raise_for_status()
             data = response.json()
-
         choice = data["choices"][0]
         usage = data.get("usage") or {}
         return ModelResponse(
-            content=choice["message"]["content"],
-            model=data.get("model", model),
+            content=choice["message"]["content"], model=data.get("model", model),
             provider=self.provider_name,
-            usage={
-                key: int(value)
-                for key, value in usage.items()
-                if isinstance(value, (int, float))
-            },
+            usage={k: int(v) for k, v in usage.items() if isinstance(v, (int, float))},
             finish_reason=choice.get("finish_reason"),
         )
+
+    async def stream(self, model: str, request: ModelRequest) -> AsyncIterator[str]:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self._headers(), json=self._payload(model, request, True)) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    for choice in data.get("choices", []):
+                        delta = choice.get("delta", {}).get("content")
+                        if delta:
+                            yield delta

@@ -12,7 +12,7 @@ from app.core.container import build_orchestrator
 from app.db.project_repository import get_project
 from app.db.session import get_session
 from app.events import AgentEventType
-from app.models.types import ChatMessage
+from app.models.task import Task\nfrom app.models.types import ChatMessage
 
 router = APIRouter(tags=["stream"])
 

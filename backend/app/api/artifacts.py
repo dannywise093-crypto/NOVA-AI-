@@ -1,21 +1,21 @@
 from pathlib import Path
 from uuid import uuid4
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.artifacts.base import ProjectArtifact
-from app.artifacts.store import ArtifactStore
+from app.artifacts.storage import build_artifact_storage
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
+from app.db.artifact_repository import create_artifact, list_artifacts
+from app.db.project_repository import get_project, list_projects
+from app.db.session import get_session
 from app.knowledge.ingest import DocumentIngestor
 from app.knowledge.vector import InMemoryVectorStore
-from app.projects.runtime import project_store
 
 router = APIRouter(tags=["artifacts"])
-store = ArtifactStore()
-project_store = InMemoryProjectStore()
 ingestor = DocumentIngestor()
 vector_store = InMemoryVectorStore()
+storage = build_artifact_storage()
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 TEXT_TYPES = {"text/plain", "text/markdown", "text/csv", "application/json"}
@@ -26,9 +26,10 @@ async def upload_artifact(
     project_id: str = Form(min_length=1, max_length=100),
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> ProjectArtifact:
-    project = project_store.get(project_id)
-    if project is None or project.owner_id != user.id:
+    project = await get_project(session, project_id, user.id)
+    if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     filename = Path(file.filename or "upload").name
     suffix = Path(filename).suffix.lower()
@@ -39,8 +40,8 @@ async def upload_artifact(
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds the 10 MB upload limit")
     artifact_id = str(uuid4())
-    storage_key = f"dev://artifacts/{project_id}/{artifact_id}/{filename}"
-    artifact = store.create(ProjectArtifact(
+    storage_key = await storage.put(f"artifacts/{project_id}/{artifact_id}/{filename}", data)
+    artifact = await create_artifact(session, ProjectArtifact(
         id=artifact_id, project_id=project_id, name=filename, mime_type=mime_type,
         size_bytes=len(data), storage_key=storage_key,
     ))
@@ -49,7 +50,13 @@ async def upload_artifact(
     return artifact
 
 @router.get("/artifacts", response_model=list[ProjectArtifact])
-async def list_artifacts(project_id: str | None = None, user: User = Depends(get_current_user)) -> list[ProjectArtifact]:
-    items = store.list(project_id)
-    allowed_projects = {item.id for item in project_store.list() if item.owner_id == user.id}
-    return [item for item in items if item.project_id in allowed_projects]
+async def list_artifacts_endpoint(
+    project_id: str | None = None,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[ProjectArtifact]:
+    projects = await list_projects(session, user.id)
+    allowed_projects = {item.id for item in projects}
+    if project_id is not None and project_id not in allowed_projects:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return await list_artifacts(session, {project_id} if project_id else allowed_projects)

@@ -10,6 +10,9 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.core.container import build_orchestrator
 from app.db.memory_repository import search_memories
+from app.db.artifact_repository import list_artifacts
+from app.artifacts.storage import build_artifact_storage
+from app.knowledge.extract import extract_text
 from app.db.project_repository import get_project
 from app.db.session import get_session
 from app.events import AgentEventType
@@ -18,6 +21,7 @@ from app.models.types import ChatMessage, ContentPart, ModelRequest
 from app.models.tool import ToolCall
 
 router = APIRouter(tags=["stream"])
+storage = build_artifact_storage()
 
 
 class StreamRequest(BaseModel):
@@ -59,16 +63,41 @@ async def event_stream(
             )
         )
 
-    parts = tuple(
-        ContentPart(
-            type=str(item.get("type") or "file"),
-            uri=str(item["uri"]),
-            mime_type=item.get("mime_type"),
-        )
-        for item in request.attachments
-        if item.get("uri")
-    )
-    messages.append(ChatMessage(role="user", content=request.goal, parts=parts))
+    allowed_projects = {project.id for project in await __import__("app.db.project_repository", fromlist=["list_projects"]).list_projects(session, user.id)}
+    allowed_artifacts = {
+        artifact.id: artifact
+        for artifact in await list_artifacts(session, allowed_projects)
+    }
+    parts_list = []
+    attachment_context = []
+    for item in request.attachments:
+        artifact_id = item.get("artifact_id")
+        if artifact_id:
+            artifact = allowed_artifacts.get(str(artifact_id))
+            if artifact is None:
+                yield sse({"type": "error", "message": "Attachment not found"})
+                return
+            data = await storage.get(artifact.storage_key)
+            if artifact.mime_type.startswith("image/"):
+                import base64
+                parts_list.append(ContentPart(
+                    type="image_url",
+                    uri=f"data:{artifact.mime_type};base64,{base64.b64encode(data).decode()}",
+                    mime_type=artifact.mime_type,
+                ))
+            else:
+                text = extract_text(data, artifact.name, artifact.mime_type)
+                attachment_context.append(f"Attached document: {artifact.name}\n{text[:120000]}")
+        elif item.get("uri"):
+            parts_list.append(ContentPart(
+                type=str(item.get("type") or "file"),
+                uri=str(item["uri"]),
+                mime_type=item.get("mime_type"),
+            ))
+    content = request.goal
+    if attachment_context:
+        content += "\n\nDocument context:\n" + "\n\n".join(attachment_context)
+    messages.append(ChatMessage(role="user", content=content, parts=tuple(parts_list)))
 
     orchestrator = build_orchestrator(session)
 

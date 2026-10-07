@@ -156,3 +156,13 @@ def test_query_expansion_is_bounded_and_deterministic():
     assert first == second
     assert 1 <= len(first) <= 4
     assert first[0] == "How does NOVA route coding tasks?"
+
+
+def test_reasoning_engine_assigns_bounded_depth():
+    from app.reasoning.engine import ReasoningEngine
+    from app.models.task import Capability, Task
+    engine = ReasoningEngine()
+    deep = engine.planning_budget(Task("build and debug code", (Capability.CODING,)))
+    direct = engine.planning_budget(Task("what is NOVA?", (Capability.REASONING,)))
+    assert deep["max_steps"] > direct["max_steps"]
+    assert deep["max_replans"] >= 1

@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     model_api_key: str = ""
     model_name: str = ""
     model_provider_name: str = "openai-compatible"
+    database_url: str = "sqlite+aiosqlite:///./nova.db"
+    auth_secret: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

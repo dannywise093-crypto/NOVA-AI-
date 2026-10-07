@@ -2,6 +2,7 @@ package ai.nova.app
 
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.view.Gravity
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -154,10 +155,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showChat() {
-        endpoint.visibility = EditText.GONE
-        email.visibility = EditText.GONE
-        password.visibility = EditText.GONE
-        authButton.visibility = Button.GONE
+        endpoint.visibility = View.GONE
+        email.visibility = View.GONE
+        password.visibility = View.GONE
+        authButton.visibility = View.GONE
         message.isEnabled = true
         sendButton.isEnabled = true
         status.text = "● Ready"

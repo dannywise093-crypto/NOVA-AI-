@@ -4,10 +4,19 @@ plugins {
 }
 
 android {
+    buildFeatures {
+        buildConfig = true
+    }
+
     namespace = "ai.nova.app"
     compileSdk = 35
 
     defaultConfig {
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"" + (project.findProperty("GOOGLE_WEB_CLIENT_ID") ?: "") + "\""
+        )
         applicationId = "ai.nova.app"
         minSdk = 26
         targetSdk = 35

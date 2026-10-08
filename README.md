@@ -25,10 +25,14 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open http://127.0.0.1:8000/docs.
+
+### Android / physical phone development
+
+Run the API on `0.0.0.0:8000` so a phone can reach it over the same Wi-Fi network. In NOVA's **Connection** panel, use your computer's LAN address, for example `http://192.168.1.20:8000`. The Android client permits development HTTP traffic so Android's cleartext policy does not block local/LAN testing. For production, deploy the API behind HTTPS.
 
 ## Roadmap
 

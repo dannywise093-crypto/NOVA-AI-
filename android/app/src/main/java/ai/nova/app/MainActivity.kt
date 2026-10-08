@@ -140,13 +140,21 @@ class MainActivity : AppCompatActivity() {
         })
         body.addView(welcomeBox, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(18) })
 
+        // Consumer sign-in choices
+        val googleLogin = uiButton("G   Continue with Google", true).apply { background = card(Color.rgb(29,31,38), 18); setTextColor(Color.WHITE) }
+        val emailLogin = uiButton("@   Continue with Email", true).apply { background = card(Color.rgb(29,31,38), 18); setTextColor(Color.WHITE) }
+        val xLogin = uiButton("X   Continue with X", true).apply { background = card(Color.rgb(29,31,38), 18); setTextColor(Color.WHITE) }
+        body.addView(googleLogin, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(10) })
+        body.addView(emailLogin, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(10) })
+        body.addView(xLogin, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(18) })
+
         email = uiInput("Email", prefs.getString("email", "") ?: "")
         password = uiInput("Password")
         password.inputType = 129
         body.addView(email, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(10) })
         body.addView(password, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(12) })
 
-        authButton = uiButton("Continue", true).apply {
+        authButton = uiButton("Sign in with Email", true).apply {
             textSize = 16f
             background = card(Color.rgb(245, 246, 248), 16)
             setTextColor(Color.rgb(15, 16, 20))
@@ -173,6 +181,9 @@ class MainActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(-1, -2))
 
         authButton.setOnClickListener { authenticate() }
+        emailLogin.setOnClickListener { email.requestFocus() }
+        googleLogin.setOnClickListener { authStatus.text = "Google sign-in will use NOVA OAuth when configured." }
+        xLogin.setOnClickListener { authStatus.text = "X sign-in will use NOVA OAuth when configured." }
         create.setOnClickListener { authenticate() }
         advanced.setOnClickListener { serverPanel.visibility = if (serverPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
         test.setOnClickListener { testConnection() }

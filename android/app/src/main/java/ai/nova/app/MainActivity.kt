@@ -5,6 +5,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.content.Intent
+import android.content.MutableContextWrapper
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.view.View
@@ -235,8 +236,9 @@ class MainActivity : AppCompatActivity() {
                     .addCredentialOption(option)
                     .build()
                 val manager = CredentialManager.create(this@MainActivity)
+                val mutableContext = MutableContextWrapper(this@MainActivity)
                 val result = manager.getCredential(
-                    context = this@MainActivity,
+                    context = mutableContext,
                     request = credentialRequest
                 )
                 val credential = result.credential

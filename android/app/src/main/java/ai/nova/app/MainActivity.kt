@@ -196,7 +196,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun startOAuth(provider: String) {
-        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd("/")
+        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
             ?: "http://10.0.2.2:8000"
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$base/api/auth/$provider/start")))
@@ -222,7 +222,7 @@ class MainActivity : AppCompatActivity() {
         authStatus.text = "Completing secure sign-in…"
         thread {
             try {
-                val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd("/")
+                val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
                     ?: "http://10.0.2.2:8000"
                 val conn = (URL("$base/api/auth/oauth/exchange").openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"

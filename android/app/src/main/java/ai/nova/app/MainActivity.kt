@@ -337,18 +337,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun clearGoogleCredentialState() {
-        lifecycleScope.launch {
-            try {
-                CredentialManager.create(this@MainActivity).clearCredentialState(
-                    androidx.credentials.ClearCredentialStateRequest()
-                )
-            } catch (_: Exception) {
-                // Best effort during sign-out.
-            }
-        }
-    }
-
     private fun buildChatPanel(): LinearLayout {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -609,6 +597,65 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
         dialog.window?.setLayout(dp(330), -2)
         dialog.window?.setGravity(Gravity.CENTER)
+    }
+
+    private fun showConnectionDialog() {
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(22), dp(20), dp(18))
+            setBackgroundColor(Color.rgb(14, 16, 22))
+        }
+        panel.addView(uiText("Server connection", 21f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD) }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+        val input = uiInput("Server URL", prefs.getString("api", "http://10.0.2.2:8000") ?: "http://10.0.2.2:8000")
+        panel.addView(input, LinearLayout.LayoutParams(-1, dp(54)).apply { bottomMargin = dp(10) })
+        panel.addView(uiText("Use HTTPS in production. HTTP development traffic is permitted by NOVA so Android does not block a local server.", 11f).apply {
+            setTextColor(Color.rgb(106, 110, 123))
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+        val save = uiButton("Save & test", true).apply {
+            background = card(Color.rgb(245, 246, 248), 14); setTextColor(Color.rgb(13, 14, 18))
+        }
+        panel.addView(save, LinearLayout.LayoutParams(-1, dp(50)))
+        save.setOnClickListener {
+            val value = input.text.toString().trim().trimEnd('/')
+            if (value.isBlank()) return@setOnClickListener
+            prefs.edit().putString("api", value).apply()
+            dialog.dismiss(); testConnection()
+        }
+        dialog.setContentView(panel)
+        dialog.window?.setBackgroundDrawable(card(Color.rgb(14, 16, 22), 20))
+        dialog.show()
+        dialog.window?.setLayout(dp(340), -2)
+        dialog.window?.setGravity(Gravity.CENTER)
+    }
+
+    private fun testConnection() {
+        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/') ?: "http://10.0.2.2:8000"
+        authStatus.text = "Checking NOVA server..."
+        thread {
+            val result = request("GET", "$base/api/health")
+            runOnUiThread {
+                if (result.code in 200..299) {
+                    authStatus.setTextColor(Color.rgb(100, 220, 150))
+                    authStatus.text = "● NOVA server is reachable"
+                } else {
+                    authStatus.setTextColor(Color.rgb(245, 120, 120))
+                    authStatus.text = "Could not reach NOVA (\${result.code}). Check the server address."
+                }
+            }
+        }
+    }
+
+    private fun clearGoogleCredentialState() {
+        lifecycleScope.launch {
+            try {
+                CredentialManager.create(this@MainActivity).clearCredentialState(
+                    androidx.credentials.ClearCredentialStateRequest()
+                )
+            } catch (_: Exception) {
+                // Credential state cleanup is best-effort during sign-out.
+            }
+        }
     }
 
     private fun authenticate() {
@@ -1120,3 +1167,122 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             "verification" -> {
+                                val data = event.optJSONObject("data")
+                                val verified = data?.optBoolean("passed", false) ?: event.optBoolean("verified", false)
+                                runOnUiThread {
+                                    status.text = if (verified) "Verified" else "Verification needs attention"
+                                    progress.text = if (verified) "✓ Verification passed" else "⚠ Verification incomplete"
+                                }
+                            }
+                            "response.final" -> {
+                                runOnUiThread {
+                                    status.text = "Finalizing..."
+                                    progress.text = "✓ Response finalized"
+                                }
+                                val content = event.optString("content")
+                                if (content.isNotBlank()) finalContent = content
+                            }
+                            "task.finished" -> {
+                                runOnUiThread {
+                                    progress.text = "✓ Task complete"
+                                    status.text = "● Ready"
+                                }
+                            }
+                            "provider.failed" -> {
+                                val data = event.optJSONObject("data")
+                                val model = data?.optString("model").orEmpty()
+                                runOnUiThread {
+                                    progress.text = "↻ Provider failed" + if (model.isNotBlank()) ": $model" else ""
+                                    status.text = "Trying another model..."
+                                }
+                            }
+                            "error" -> {
+                                failed = true
+                                val error = event.optString("error", "Unknown stream error")
+                                runOnUiThread {
+                                    assistant.text = error
+                                    assistant.setTextColor(Color.rgb(255, 120, 120))
+                                    status.text = "Error"
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Ignore malformed/heartbeat SSE lines.
+                    }
+                }
+            }
+
+            if (finalContent != null && answer.isEmpty()) {
+                answer.append(finalContent)
+                runOnUiThread { assistant.setText(finalContent) }
+            }
+
+            if (!failed) {
+                val finalAnswer = answer.toString().ifBlank { finalContent ?: "No response." }
+                history.add(JSONObject().put("role", "user").put("content", userText))
+                history.add(JSONObject().put("role", "assistant").put("content", finalAnswer))
+                thread {
+                    saveMessage(conversation, "user", userText)
+                    saveMessage(conversation, "assistant", finalAnswer)
+                }
+                runOnUiThread {
+                    assistant.setText(finalAnswer)
+                    assistant.setTextColor(Color.WHITE)
+                    status.text = "● Ready"
+                }
+            }
+        } catch (e: Exception) {
+            failed = true
+            runOnUiThread {
+                assistant.text = "Connection error: " + (e.message ?: "unknown error")
+                assistant.setTextColor(Color.rgb(255, 120, 120))
+                status.text = "Offline"
+                progress.visibility = View.GONE
+            }
+        } finally {
+            connection?.disconnect()
+            runOnUiThread {
+                streaming = false
+                newChatButton.isEnabled = true
+                if (!failed && prefs.getString("token", null) != null) {
+                    sendButton.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun authError(text: String) {
+        authStatus.text = text
+        authButton.isEnabled = true
+    }
+
+    private fun request(
+        method: String,
+        url: String,
+        body: JSONObject? = null,
+        auth: String? = null
+    ): HttpResult {
+        return try {
+            val c = URL(url).openConnection() as HttpURLConnection
+            c.connectTimeout = 10_000
+            c.readTimeout = 60_000
+            c.requestMethod = method
+            c.setRequestProperty("Accept", "application/json")
+            if (auth != null) c.setRequestProperty("Authorization", auth)
+            if (body != null) {
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/json")
+                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            }
+            val code = c.responseCode
+            val stream = if (code >= 400) c.errorStream else c.inputStream
+            val response = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            c.disconnect()
+            HttpResult(code, response)
+        } catch (e: Exception) {
+            HttpResult(-1, "ERROR: " + e.message)
+        }
+    }
+
+    data class HttpResult(val code: Int, val body: String)
+}

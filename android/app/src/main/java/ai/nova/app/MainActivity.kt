@@ -208,22 +208,15 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun signInWithGoogle() {
-        authStatus.text = "Opening Google sign-in…"
-        thread {
-            try {
-                val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
-                    ?: "http://10.0.2.2:8000"
-                val config = request("GET", "$base/api/auth/google/config")
-                if (config.code !in 200..299) throw IllegalStateException("Google sign-in is not configured")
-                val clientId = JSONObject(config.body).optString("client_id")
-                if (clientId.isBlank()) throw IllegalStateException("Google client ID is missing")
-                runOnUiThread { launchGoogleCredentialFlow(clientId) }
-            } catch (_: Exception) {
-                runOnUiThread {
-                    authStatus.text = "Google sign-in is unavailable. Check your connection."
-                }
-            }
+        val clientId = BuildConfig.GOOGLE_WEB_CLIENT_ID.trim()
+        if (clientId.isBlank()) {
+            authStatus.text = "Google sign-in is not configured yet."
+            return
         }
+        // Launch Android native Google account selection directly.
+        // No NOVA server URL or browser redirect is used here.
+        authStatus.text = "Opening Google sign-in…"
+        launchGoogleCredentialFlow(clientId)
     }
 
     private fun launchGoogleCredentialFlow(serverClientId: String) {

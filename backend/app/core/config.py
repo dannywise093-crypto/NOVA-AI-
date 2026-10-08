@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     embedding_base_url: str = ""
     embedding_api_key: str = ""
     embedding_model: str = ""
+    oauth_public_base_url: str = ""
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    x_oauth_client_id: str = ""
+    x_oauth_client_secret: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

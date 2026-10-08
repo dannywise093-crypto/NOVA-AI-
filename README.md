@@ -32,7 +32,29 @@ Open http://127.0.0.1:8000/docs.
 
 ### Android / physical phone development
 
-Run the API on `0.0.0.0:8000` so a phone can reach it over the same Wi-Fi network. In NOVA's **Connection** panel, use your computer's LAN address, for example `http://192.168.1.20:8000`. The Android client permits development HTTP traffic so Android's cleartext policy does not block local/LAN testing. For production, deploy the API behind HTTPS.
+Run the API on `0.0.0.0:8000` for local development. The NOVA app keeps the API address internal; users do not enter an IP address. For production, deploy the API behind HTTPS.
+
+### Google and X sign-in
+
+NOVA supports real OAuth 2.0 + PKCE sign-in for Google and X. The app opens the provider login, the provider returns to the NOVA API, and the API sends a one-time code back to the Android app using the `nova://auth/callback` deep link. Google recommends authorization-code based flows for secure sign-in, and X supports OAuth 2.0 PKCE for user authentication. 
+
+Set these backend environment variables before enabling the buttons:
+
+```env
+OAUTH_PUBLIC_BASE_URL=https://api.example.com
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+X_OAUTH_CLIENT_ID=...
+X_OAUTH_CLIENT_SECRET=...
+AUTH_SECRET=...
+```
+
+Register these callback URLs with the providers:
+
+- `https://api.example.com/api/auth/google/callback`
+- `https://api.example.com/api/auth/x/callback`
+
+For Google, create Android/Web OAuth credentials and use the backend web client for the authorization-code exchange. For X, enable OAuth 2.0 PKCE and configure the callback URL in the X developer console. Production OAuth should use HTTPS.
 
 ## Roadmap
 

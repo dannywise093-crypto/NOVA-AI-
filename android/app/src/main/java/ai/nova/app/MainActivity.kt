@@ -11,6 +11,18 @@ import android.view.View
 import android.view.Gravity
 import android.widget.*
 import android.app.Dialog
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.security.SecureRandom
+import android.util.Base64
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONArray
 import org.json.JSONObject
@@ -186,7 +198,7 @@ class MainActivity : AppCompatActivity() {
 
         authButton.setOnClickListener { authenticate() }
         emailLogin.setOnClickListener { email.requestFocus() }
-        googleLogin.setOnClickListener { startOAuth("google") }
+        googleLogin.setOnClickListener { signInWithGoogle() }
         xLogin.setOnClickListener { startOAuth("x") }
         create.setOnClickListener { authenticate() }
 
@@ -195,13 +207,84 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    private fun startOAuth(provider: String) {
-        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
-            ?: "http://10.0.2.2:8000"
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$base/api/auth/$provider/start")))
-        } catch (_: Exception) {
-            authStatus.text = "Unable to open $provider sign-in."
+    private fun signInWithGoogle() {
+        authStatus.text = "Opening Google sign-in…"
+        thread {
+            try {
+                val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
+                    ?: "http://10.0.2.2:8000"
+                val config = request("GET", "$base/api/auth/google/config")
+                if (config.code !in 200..299) throw IllegalStateException("Google sign-in is not configured")
+                val clientId = JSONObject(config.body).optString("client_id")
+                if (clientId.isBlank()) throw IllegalStateException("Google client ID is missing")
+                runOnUiThread { launchGoogleCredentialFlow(clientId) }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    authStatus.text = "Google sign-in is unavailable. Check your connection."
+                }
+            }
+        }
+    }
+
+    private fun launchGoogleCredentialFlow(serverClientId: String) {
+        lifecycleScope.launch {
+            try {
+                val nonceBytes = ByteArray(32)
+                SecureRandom().nextBytes(nonceBytes)
+                val nonce = Base64.encodeToString(
+                    nonceBytes,
+                    Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING
+                )
+                val option = GetSignInWithGoogleOption.Builder(serverClientId)
+                    .setNonce(nonce)
+                    .build()
+                val credentialRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(option)
+                    .build()
+                val manager = CredentialManager.create(this@MainActivity)
+                val result = manager.getCredential(
+                    context = this@MainActivity,
+                    request = credentialRequest
+                )
+                val credential = result.credential
+                if (credential !is CustomCredential ||
+                    credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) {
+                    throw IllegalStateException("Unexpected Google credential")
+                }
+                val googleCredential = try {
+                    GoogleIdTokenCredential.createFrom(credential.data)
+                } catch (e: GoogleIdTokenParsingException) {
+                    throw IllegalStateException("Invalid Google credential", e)
+                }
+                exchangeGoogleIdToken(googleCredential.idToken)
+            } catch (_: Exception) {
+                authStatus.text = "Google sign-in was cancelled or could not be completed."
+            }
+        }
+    }
+
+    private fun exchangeGoogleIdToken(idToken: String) {
+        authStatus.text = "Completing secure sign-in…"
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
+                    ?: "http://10.0.2.2:8000"
+                val result = request(
+                    "POST",
+                    "$base/api/auth/google/mobile",
+                    JSONObject().put("id_token", idToken)
+                )
+                if (result.code !in 200..299) throw IllegalStateException("Google authentication failed")
+                val token = JSONObject(result.body).optString("access_token")
+                if (token.isBlank()) throw IllegalStateException("NOVA token missing")
+                prefs.edit().putString("token", token).apply()
+                withContext(Dispatchers.Main) { showChat() }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    authStatus.text = "Google sign-in could not be completed. Please try again."
+                }
+            }
         }
     }
 

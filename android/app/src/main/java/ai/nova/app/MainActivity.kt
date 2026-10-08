@@ -21,7 +21,6 @@ import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("nova", MODE_PRIVATE) }
-    private lateinit var endpoint: EditText
     private lateinit var email: EditText
     private lateinit var password: EditText
     private lateinit var message: EditText
@@ -45,7 +44,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var loginPanel: LinearLayout
     private lateinit var chatPanel: LinearLayout
     private lateinit var authStatus: TextView
-    private lateinit var serverPanel: LinearLayout
     private lateinit var emptyState: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -476,10 +474,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun testConnection() {
-        val base = endpoint.text.toString().trim().trimEnd('/').ifBlank {
-            prefs.getString("api", "http://10.0.2.2:8000") ?: "http://10.0.2.2:8000"
-        }
-        prefs.edit().putString("api", base).apply()
+        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/') ?: "http://10.0.2.2:8000"
         authStatus.text = "Checking NOVA server..."
         thread {
             val result = request("GET", "$base/api/health")
@@ -496,7 +491,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun authenticate() {
-        val base = endpoint.text.toString().trim().trimEnd('/')
+        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/') ?: "http://10.0.2.2:8000"
         val userEmail = email.text.toString().trim()
         val userPassword = password.text.toString()
         if (base.isBlank() || userEmail.isBlank() || userPassword.length < 8) {

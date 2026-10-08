@@ -22,6 +22,8 @@ jobs:
         run: gradle wrapper --gradle-version 8.7
       - name: Build debug APK
         run: ./gradlew assembleDebug
+        env:
+          NOVA_BUILD: "premium-ui"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

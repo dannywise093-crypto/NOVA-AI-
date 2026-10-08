@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import asyncio
 from urllib.parse import urlencode
 from uuid import uuid4
 import base64
@@ -20,6 +21,8 @@ from app.auth.tokens import issue_token
 from app.core.config import settings
 from app.db.models import UserRow
 from app.db.session import get_session
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 
 router = APIRouter(tags=["auth"])
 
@@ -37,6 +40,10 @@ class LoginRequest(RegisterRequest):
 
 class OAuthExchangeRequest(BaseModel):
     code: str = Field(min_length=20, max_length=256)
+
+
+class GoogleMobileRequest(BaseModel):
+    id_token: str = Field(min_length=100, max_length=12000)
 
 
 def _require_oauth(provider: str) -> str:
@@ -101,6 +108,64 @@ async def login(request: LoginRequest, session: AsyncSession = Depends(get_sessi
     if not settings.auth_secret:
         raise HTTPException(status_code=503, detail="Authentication secret is not configured")
     return {"access_token": issue_token(user.id, settings.auth_secret), "token_type": "bearer"}
+
+
+@router.get("/auth/google/config")
+async def google_config() -> dict[str, str]:
+    if not settings.google_oauth_client_id:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+    return {"client_id": settings.google_oauth_client_id}
+
+
+@router.post("/auth/google/mobile")
+async def google_mobile_login(
+    request: GoogleMobileRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    if not settings.google_oauth_client_id:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+    if not settings.auth_secret:
+        raise HTTPException(status_code=503, detail="Authentication secret is not configured")
+
+    try:
+        info = await asyncio.to_thread(
+            google_id_token.verify_oauth2_token,
+            request.id_token,
+            google_requests.Request(),
+            settings.google_oauth_client_id,
+        )
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Google identity token")
+
+    issuer = str(info.get("iss") or "")
+    if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+        raise HTTPException(status_code=401, detail="Invalid Google token issuer")
+    if not info.get("email_verified"):
+        raise HTTPException(status_code=403, detail="Google email is not verified")
+
+    subject = str(info.get("sub") or "")
+    email = str(info.get("email") or "").lower()
+    if not subject or not email:
+        raise HTTPException(status_code=401, detail="Google account identity is incomplete")
+
+    user = await session.scalar(select(UserRow).where(UserRow.email == email))
+    if user is None:
+        user = UserRow(
+            id=str(uuid4()),
+            email=email,
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+            created_at=datetime.now(timezone.utc),
+            disabled=False,
+        )
+        session.add(user)
+        await session.commit()
+    if user.disabled:
+        raise HTTPException(status_code=403, detail="NOVA account is disabled")
+
+    return {
+        "access_token": issue_token(user.id, settings.auth_secret),
+        "token_type": "bearer",
+    }
 
 
 @router.get("/auth/{provider}/start")

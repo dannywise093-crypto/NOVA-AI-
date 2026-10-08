@@ -577,6 +577,7 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
                 prefs.edit().remove("token").apply()
                 conversationId = null; history.clear(); conversations.clear(); messages.removeAllViews()
+                clearGoogleCredentialState()
                 showLogin()
             }
         }
@@ -631,6 +632,18 @@ class MainActivity : AppCompatActivity() {
                     authStatus.setTextColor(Color.rgb(245, 120, 120))
                     authStatus.text = "Could not reach NOVA (\${result.code}). Check the server address."
                 }
+            }
+        }
+    }
+
+    private fun clearGoogleCredentialState() {
+        lifecycleScope.launch {
+            try {
+                CredentialManager.create(this@MainActivity).clearCredentialState(
+                    androidx.credentials.ClearCredentialStateRequest()
+                )
+            } catch (_: Exception) {
+                // Credential state cleanup is best-effort during sign-out.
             }
         }
     }

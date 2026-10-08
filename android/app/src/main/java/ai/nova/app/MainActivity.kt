@@ -162,45 +162,7 @@ class MainActivity : AppCompatActivity() {
         }
         body.addView(create, LinearLayout.LayoutParams(-1, dp(44)))
 
-        val connectionCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = card(Color.rgb(15, 17, 23), 16)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        val connectionHeader = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        connectionHeader.addView(uiText("Connection", 13f).apply {
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        val test = uiText("Test", 13f).apply {
-            gravity = Gravity.CENTER
-            setTextColor(Color.rgb(185, 188, 199))
-            background = card(Color.rgb(31, 34, 43), 12)
-            setPadding(dp(14), dp(7), dp(14), dp(7))
-            isClickable = true
-        }
-        connectionHeader.addView(test, LinearLayout.LayoutParams(dp(68), dp(36)))
-        connectionCard.addView(connectionHeader)
-
-        val advanced = uiText("Server address  ›", 12f).apply {
-            setTextColor(Color.rgb(112, 116, 129))
-            setPadding(0, dp(8), 0, 0)
-            isClickable = true
-        }
-        connectionCard.addView(advanced)
-        serverPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-        }
-        endpoint = uiInput("Server URL", prefs.getString("api", "http://10.0.2.2:8000") ?: "http://10.0.2.2:8000")
-        serverPanel.addView(endpoint, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(10) })
-        serverPanel.addView(uiText("HTTP is allowed for development. Use HTTPS for production. On a real phone, use the computer's LAN IP.", 11f).apply {
-            setTextColor(Color.rgb(104, 108, 121))
-            setPadding(dp(2), dp(7), dp(2), 0)
-        })
-        connectionCard.addView(serverPanel)
-        body.addView(connectionCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
-
-        authStatus = uiText("", 13f).apply {
+        // Server configuration is intentionally hidden from the consumer login UI.\n        // NOVA manages its API endpoint internally.\n\n        authStatus = uiText("", 13f).apply {
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(245, 120, 120))
             setPadding(0, dp(4), 0, 0)
@@ -465,12 +427,6 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(14, 16, 22))
         }
         panel.addView(uiText("NOVA Settings", 22f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD) }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
-        val connection = uiText("Connection", 14f).apply {
-            setTextColor(Color.rgb(205, 208, 217)); setPadding(dp(14), 0, dp(14), 0); gravity = Gravity.CENTER_VERTICAL
-            background = card(Color.rgb(22, 24, 31), 13); isClickable = true
-            setOnClickListener { dialog.dismiss(); showConnectionDialog() }
-        }
-        panel.addView(connection, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(8) })
         val logout = uiText("Sign out", 14f).apply {
             setTextColor(Color.rgb(245, 120, 120)); setPadding(dp(14), 0, dp(14), 0); gravity = Gravity.CENTER_VERTICAL
             background = card(Color.rgb(25, 18, 21), 13); isClickable = true

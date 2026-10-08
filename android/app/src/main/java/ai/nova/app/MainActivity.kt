@@ -327,6 +327,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun startOAuth(provider: String) {
+        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
+            ?: "http://10.0.2.2:8000"
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$base/api/auth/$provider/start")))
+        } catch (_: Exception) {
+            authStatus.text = "Could not open sign-in."
+        }
+    }
+
+    private fun clearGoogleCredentialState() {
+        lifecycleScope.launch {
+            try {
+                CredentialManager.create(this@MainActivity).clearCredentialState(
+                    androidx.credentials.ClearCredentialStateRequest()
+                )
+            } catch (_: Exception) {
+                // Best effort during sign-out.
+            }
+        }
+    }
+
     private fun buildChatPanel(): LinearLayout {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1098,122 +1120,3 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             "verification" -> {
-                                val data = event.optJSONObject("data")
-                                val verified = data?.optBoolean("passed", false) ?: event.optBoolean("verified", false)
-                                runOnUiThread {
-                                    status.text = if (verified) "Verified" else "Verification needs attention"
-                                    progress.text = if (verified) "✓ Verification passed" else "⚠ Verification incomplete"
-                                }
-                            }
-                            "response.final" -> {
-                                runOnUiThread {
-                                    status.text = "Finalizing..."
-                                    progress.text = "✓ Response finalized"
-                                }
-                                val content = event.optString("content")
-                                if (content.isNotBlank()) finalContent = content
-                            }
-                            "task.finished" -> {
-                                runOnUiThread {
-                                    progress.text = "✓ Task complete"
-                                    status.text = "● Ready"
-                                }
-                            }
-                            "provider.failed" -> {
-                                val data = event.optJSONObject("data")
-                                val model = data?.optString("model").orEmpty()
-                                runOnUiThread {
-                                    progress.text = "↻ Provider failed" + if (model.isNotBlank()) ": $model" else ""
-                                    status.text = "Trying another model..."
-                                }
-                            }
-                            "error" -> {
-                                failed = true
-                                val error = event.optString("error", "Unknown stream error")
-                                runOnUiThread {
-                                    assistant.text = error
-                                    assistant.setTextColor(Color.rgb(255, 120, 120))
-                                    status.text = "Error"
-                                }
-                            }
-                        }
-                    } catch (_: Exception) {
-                        // Ignore malformed/heartbeat SSE lines.
-                    }
-                }
-            }
-
-            if (finalContent != null && answer.isEmpty()) {
-                answer.append(finalContent)
-                runOnUiThread { assistant.setText(finalContent) }
-            }
-
-            if (!failed) {
-                val finalAnswer = answer.toString().ifBlank { finalContent ?: "No response." }
-                history.add(JSONObject().put("role", "user").put("content", userText))
-                history.add(JSONObject().put("role", "assistant").put("content", finalAnswer))
-                thread {
-                    saveMessage(conversation, "user", userText)
-                    saveMessage(conversation, "assistant", finalAnswer)
-                }
-                runOnUiThread {
-                    assistant.setText(finalAnswer)
-                    assistant.setTextColor(Color.WHITE)
-                    status.text = "● Ready"
-                }
-            }
-        } catch (e: Exception) {
-            failed = true
-            runOnUiThread {
-                assistant.text = "Connection error: " + (e.message ?: "unknown error")
-                assistant.setTextColor(Color.rgb(255, 120, 120))
-                status.text = "Offline"
-                progress.visibility = View.GONE
-            }
-        } finally {
-            connection?.disconnect()
-            runOnUiThread {
-                streaming = false
-                newChatButton.isEnabled = true
-                if (!failed && prefs.getString("token", null) != null) {
-                    sendButton.isEnabled = true
-                }
-            }
-        }
-    }
-
-    private fun authError(text: String) {
-        authStatus.text = text
-        authButton.isEnabled = true
-    }
-
-    private fun request(
-        method: String,
-        url: String,
-        body: JSONObject? = null,
-        auth: String? = null
-    ): HttpResult {
-        return try {
-            val c = URL(url).openConnection() as HttpURLConnection
-            c.connectTimeout = 10_000
-            c.readTimeout = 60_000
-            c.requestMethod = method
-            c.setRequestProperty("Accept", "application/json")
-            if (auth != null) c.setRequestProperty("Authorization", auth)
-            if (body != null) {
-                c.doOutput = true
-                c.setRequestProperty("Content-Type", "application/json")
-                c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            }
-            val code = c.responseCode
-            val stream = if (code >= 400) c.errorStream else c.inputStream
-            val response = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            c.disconnect()
-            HttpResult(code, response)
-        } catch (e: Exception) {
-            HttpResult(-1, "ERROR: " + e.message)
-        }
-    }
-
-    data class HttpResult(val code: Int, val body: String)
-}

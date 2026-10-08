@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         buildUi()
         if (prefs.getString("token", null) != null) showChat()
+        handleOAuthIntent(intent)
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -203,9 +204,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        intent ?: return
-        if (intent.data?.scheme == "nova" && intent.data?.host == "auth") {
-            val code = intent.data?.getQueryParameter("code")
+        handleOAuthIntent(intent)
+    }
+
+    private fun handleOAuthIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "nova" && data.host == "auth") {
+            val code = data.getQueryParameter("code")
             if (!code.isNullOrBlank()) exchangeOAuthCode(code)
         }
     }

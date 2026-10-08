@@ -886,8 +886,7 @@ class MainActivity : AppCompatActivity() {
             authStatus.text = "Session expired. Please sign in again."
             sendButton.isEnabled = false
             newChatButton.isEnabled = false
-            authButton.visibility = View.VISIBLE
-            authButton.isEnabled = true
+            showLogin()
         }
     }
 
@@ -973,6 +972,7 @@ class MainActivity : AppCompatActivity() {
                     assistant.text = "Session expired. Please sign in again."
                     status.text = "Session expired"
                     sendButton.isEnabled = false
+                    showLogin()
                 }
                 return
             }

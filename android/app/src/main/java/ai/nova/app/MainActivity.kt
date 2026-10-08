@@ -327,16 +327,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startOAuth(provider: String) {
-        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
-            ?: "http://10.0.2.2:8000"
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$base/api/auth/$provider/start")))
-        } catch (_: Exception) {
-            authStatus.text = "Could not open sign-in."
-        }
-    }
-
     private fun buildChatPanel(): LinearLayout {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -597,53 +587,6 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
         dialog.window?.setLayout(dp(330), -2)
         dialog.window?.setGravity(Gravity.CENTER)
-    }
-
-    private fun showConnectionDialog() {
-        val dialog = Dialog(this)
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(22), dp(20), dp(18))
-            setBackgroundColor(Color.rgb(14, 16, 22))
-        }
-        panel.addView(uiText("Server connection", 21f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD) }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
-        val input = uiInput("Server URL", prefs.getString("api", "http://10.0.2.2:8000") ?: "http://10.0.2.2:8000")
-        panel.addView(input, LinearLayout.LayoutParams(-1, dp(54)).apply { bottomMargin = dp(10) })
-        panel.addView(uiText("Use HTTPS in production. HTTP development traffic is permitted by NOVA so Android does not block a local server.", 11f).apply {
-            setTextColor(Color.rgb(106, 110, 123))
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
-        val save = uiButton("Save & test", true).apply {
-            background = card(Color.rgb(245, 246, 248), 14); setTextColor(Color.rgb(13, 14, 18))
-        }
-        panel.addView(save, LinearLayout.LayoutParams(-1, dp(50)))
-        save.setOnClickListener {
-            val value = input.text.toString().trim().trimEnd('/')
-            if (value.isBlank()) return@setOnClickListener
-            prefs.edit().putString("api", value).apply()
-            dialog.dismiss(); testConnection()
-        }
-        dialog.setContentView(panel)
-        dialog.window?.setBackgroundDrawable(card(Color.rgb(14, 16, 22), 20))
-        dialog.show()
-        dialog.window?.setLayout(dp(340), -2)
-        dialog.window?.setGravity(Gravity.CENTER)
-    }
-
-    private fun testConnection() {
-        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/') ?: "http://10.0.2.2:8000"
-        authStatus.text = "Checking NOVA server..."
-        thread {
-            val result = request("GET", "$base/api/health")
-            runOnUiThread {
-                if (result.code in 200..299) {
-                    authStatus.setTextColor(Color.rgb(100, 220, 150))
-                    authStatus.text = "● NOVA server is reachable"
-                } else {
-                    authStatus.setTextColor(Color.rgb(245, 120, 120))
-                    authStatus.text = "Could not reach NOVA (\${result.code}). Check the server address."
-                }
-            }
-        }
     }
 
     private fun clearGoogleCredentialState() {

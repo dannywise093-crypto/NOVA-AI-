@@ -182,16 +182,64 @@ class MainActivity : AppCompatActivity() {
 
         authButton.setOnClickListener { authenticate() }
         emailLogin.setOnClickListener { email.requestFocus() }
-        googleLogin.setOnClickListener { authStatus.text = "Google sign-in will use NOVA OAuth when configured." }
-        xLogin.setOnClickListener { authStatus.text = "X sign-in will use NOVA OAuth when configured." }
+        googleLogin.setOnClickListener { startOAuth("google") }
+        xLogin.setOnClickListener { startOAuth("x") }
         create.setOnClickListener { authenticate() }
-        advanced.setOnClickListener { serverPanel.visibility = if (serverPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
-        test.setOnClickListener { testConnection() }
 
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         return root
     }
 
+
+    private fun startOAuth(provider: String) {
+        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd("/")
+            ?: "http://10.0.2.2:8000"
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$base/api/auth/$provider/start")))
+        } catch (_: Exception) {
+            authStatus.text = "Unable to open $provider sign-in."
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent ?: return
+        if (intent.data?.scheme == "nova" && intent.data?.host == "auth") {
+            val code = intent.data?.getQueryParameter("code")
+            if (!code.isNullOrBlank()) exchangeOAuthCode(code)
+        }
+    }
+
+    private fun exchangeOAuthCode(code: String) {
+        authStatus.text = "Completing secure sign-in…"
+        thread {
+            try {
+                val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd("/")
+                    ?: "http://10.0.2.2:8000"
+                val conn = (URL("$base/api/auth/oauth/exchange").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 10000
+                    readTimeout = 15000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                }
+                conn.outputStream.use { it.write(JSONObject().put("code", code).toString().toByteArray()) }
+                val responseBody = if (conn.responseCode in 200..299) {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                }
+                val token = JSONObject(responseBody).optString("access_token")
+                if (conn.responseCode !in 200..299 || token.isBlank()) {
+                    throw IllegalStateException("OAuth exchange failed")
+                }
+                prefs.edit().putString("token", token).apply()
+                runOnUiThread { showChat() }
+            } catch (_: Exception) {
+                runOnUiThread { authStatus.text = "Sign-in could not be completed. Please try again." }
+            }
+        }
+    }
 
     private fun buildChatPanel(): LinearLayout {
         val root = LinearLayout(this).apply {

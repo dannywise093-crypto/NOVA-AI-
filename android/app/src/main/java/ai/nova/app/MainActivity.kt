@@ -169,7 +169,10 @@ class MainActivity : AppCompatActivity() {
         }
         body.addView(create, LinearLayout.LayoutParams(-1, dp(44)))
 
-        // Server configuration is intentionally hidden from the consumer login UI.\n        // NOVA manages its API endpoint internally.\n\n        authStatus = uiText("", 13f).apply {
+        // Server configuration is intentionally hidden from the consumer login UI.
+        // NOVA manages its API endpoint internally.
+
+        authStatus = uiText("", 13f).apply {
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(245, 120, 120))
             setPadding(0, dp(4), 0, 0)

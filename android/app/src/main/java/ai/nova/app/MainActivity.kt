@@ -589,6 +589,20 @@ class MainActivity : AppCompatActivity() {
         dialog.window?.setGravity(Gravity.CENTER)
     }
 
+    private fun startOAuth(provider: String) {
+        if (provider != "x") {
+            authStatus.text = "This sign-in option is not available."
+            return
+        }
+        val base = prefs.getString("api", "http://10.0.2.2:8000")?.trim()?.trimEnd('/')
+            ?: "http://10.0.2.2:8000"
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$base/api/auth/$provider/start")))
+        } catch (_: Exception) {
+            authStatus.text = "Could not open sign-in."
+        }
+    }
+
     private fun clearGoogleCredentialState() {
         lifecycleScope.launch {
             try {
